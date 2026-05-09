@@ -1,0 +1,50 @@
+package com.billing.system.entity;
+
+import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.Setter;
+
+import java.time.LocalDate;
+
+@Getter
+@Setter
+@Entity
+@Table(name = "daily_entry")
+public class Entry {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    private Integer serialNo;
+
+    private LocalDate dated;
+
+    private String partyCode;
+    private String nameOfParty;
+
+    private String gstInvoiceYesNo;
+    private String commercialBillNo;
+    private String gstInvoiceNo;
+
+    private String description;
+    private String quality;
+    private String colour;
+
+    private Double greyInRoll;
+    private Double greyInKg;
+
+    private Double dyedFabricARoll;
+    private Double dyedFabricOutAKg;
+    private Double dyedFabricBRoll;
+    private Double dyedFabricOutBKg;
+    private Double dyedFabricOutCP;
+
+    private Double quantityRollBilled;
+    private Double quantityKgBilled;
+
+    private Double rate;
+    private Double amount;
+    private Double gstAmount;
+    private Double totalAmount;
+}

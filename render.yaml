@@ -1,0 +1,25 @@
+# Render Blueprint for the backend repo.
+# After connecting this repo on render.com, set these env vars on the service:
+#   DB_URL              jdbc:postgresql://<host>/<db>?sslmode=require
+#   DB_USERNAME         <user>
+#   DB_PASSWORD         <password>
+#   CORS_ALLOWED_ORIGINS  https://your-frontend.vercel.app
+#
+# Use Neon (neon.tech) for the Postgres database — free, no card required,
+# and not subject to Render's 30-day free-Postgres expiry.
+
+services:
+  - type: web
+    name: billing-backend
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: DB_URL
+        sync: false
+      - key: DB_USERNAME
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false

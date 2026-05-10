@@ -51,10 +51,10 @@ public class InwardService {
         }
 
         String contractNo = inward.getContractNo();
-        String stage = (inward.getIsDyedFabric() != null && inward.getIsDyedFabric())
-                || "DYED".equalsIgnoreCase(inward.getFabricType())
-                ? FabricStage.DYED.name()
-                : FabricStage.GREIGH.name();
+        String inwardType = inward.getFabricType();
+        boolean isDyed = (inward.getIsDyedFabric() != null && inward.getIsDyedFabric())
+                || (inwardType != null && inwardType.toUpperCase().contains("DYED"));
+        String stage = isDyed ? FabricStage.DYED.name() : FabricStage.GREIGH.name();
 
         for (InwardItem item : inward.getItems()) {
             item.setInward(inward);

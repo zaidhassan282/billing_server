@@ -62,14 +62,17 @@ public class InwardService {
             if (item.getQuality() == null || item.getQuality().isEmpty()) {
                 throw new RuntimeException("Quality is required");
             }
-            if (item.getKg() == null || item.getKg() <= 0) {
-                throw new RuntimeException("Weight (kg) must be greater than 0");
+            if (item.getKg() == null) item.setKg(0.0);
+            if (item.getMeters() == null) item.setMeters(0.0);
+            if (item.getRoll() == null) item.setRoll(0);
+            if (item.getKg() <= 0 && item.getRoll() <= 0 && item.getMeters() <= 0) {
+                throw new RuntimeException(
+                        "Item '" + item.getQuality()
+                        + "' needs at least one of weight (kg), rolls, or meters greater than 0");
             }
             if (item.getColor() == null || item.getColor().isEmpty()) {
                 item.setColor("NA");
             }
-            if (item.getMeters() == null) item.setMeters(0.0);
-            if (item.getRoll() == null) item.setRoll(0);
 
             mergeIntoInventory(contractNo, stage, inward.getInwardId(), item);
             recordMovement(inward.getInwardId(), item, stage);

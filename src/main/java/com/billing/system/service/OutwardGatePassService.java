@@ -65,14 +65,17 @@ public class OutwardGatePassService {
             if (item.getQuality() == null || item.getQuality().isEmpty()) {
                 throw new RuntimeException("Quality is required");
             }
-            if (item.getKg() == null || item.getKg() <= 0) {
-                throw new RuntimeException("Weight (kg) must be greater than 0");
+            if (item.getKg() == null) item.setKg(0.0);
+            if (item.getMeters() == null) item.setMeters(0.0);
+            if (item.getRoll() == null) item.setRoll(0);
+            if (item.getKg() <= 0 && item.getRoll() <= 0 && item.getMeters() <= 0) {
+                throw new RuntimeException(
+                        "Item '" + item.getQuality()
+                        + "' needs at least one of weight (kg), rolls, or meters greater than 0");
             }
             if (item.getColor() == null || item.getColor().isEmpty()) {
                 item.setColor("NA");
             }
-            if (item.getMeters() == null) item.setMeters(0.0);
-            if (item.getRoll() == null) item.setRoll(0);
 
             // Both DELIVERY and RETURN deduct (per business rule:
             // "When grey/dyed is used or returned it decrements inventory").
@@ -107,22 +110,26 @@ public class OutwardGatePassService {
         double availM  = inv.getAvailableMeters() == null ? 0.0 : inv.getAvailableMeters();
         int    availR  = inv.getAvailableRolls()  == null ? 0   : inv.getAvailableRolls();
 
-        if (availKg < item.getKg()) {
+        double needKg = item.getKg() == null ? 0.0 : item.getKg();
+        double needM  = item.getMeters() == null ? 0.0 : item.getMeters();
+        int    needR  = item.getRoll() == null ? 0 : item.getRoll();
+
+        if (needKg > 0 && availKg < needKg) {
             throw new RuntimeException("Not enough kg for " + item.getQuality()
-                    + " (avail " + availKg + ", need " + item.getKg() + ")");
+                    + " (avail " + availKg + ", need " + needKg + ")");
         }
-        if (item.getRoll() != null && item.getRoll() > 0 && availR < item.getRoll()) {
+        if (needR > 0 && availR < needR) {
             throw new RuntimeException("Not enough rolls for " + item.getQuality()
-                    + " (avail " + availR + ", need " + item.getRoll() + ")");
+                    + " (avail " + availR + ", need " + needR + ")");
         }
-        if (item.getMeters() != null && item.getMeters() > 0 && availM < item.getMeters()) {
+        if (needM > 0 && availM < needM) {
             throw new RuntimeException("Not enough meters for " + item.getQuality()
-                    + " (avail " + availM + ", need " + item.getMeters() + ")");
+                    + " (avail " + availM + ", need " + needM + ")");
         }
 
-        inv.setAvailableKg(availKg - item.getKg());
-        inv.setAvailableRolls(availR - (item.getRoll() == null ? 0 : item.getRoll()));
-        inv.setAvailableMeters(Math.max(0.0, availM - (item.getMeters() == null ? 0.0 : item.getMeters())));
+        inv.setAvailableKg(Math.max(0.0, availKg - needKg));
+        inv.setAvailableRolls(Math.max(0, availR - needR));
+        inv.setAvailableMeters(Math.max(0.0, availM - needM));
         inventoryRepo.save(inv);
     }
 

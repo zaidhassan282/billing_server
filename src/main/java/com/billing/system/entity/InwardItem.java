@@ -45,6 +45,12 @@ public class InwardItem {
     /** Size or GSM specification. */
     private String sizeGsm;
 
+    /**
+     * Fabric type for this item (free text — e.g. "Cotton 60×60", "Polyester").
+     * Distinct from the header-level fabricType (Inward Type) on InwardGatePass.
+     */
+    private String fabricType;
+
     @JsonIgnore
     @ManyToOne
     @JoinColumn(name = "inward_id")

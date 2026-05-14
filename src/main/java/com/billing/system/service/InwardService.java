@@ -62,10 +62,18 @@ public class InwardService {
             if (item.getQuality() == null || item.getQuality().isEmpty()) {
                 throw new RuntimeException("Quality is required");
             }
-            if (item.getKg() == null) item.setKg(0.0);
+            // Authoritative weight for inventory: prefer totalWeight, fall back to kg,
+            // then to fabricWeight + ribWeight if the user filled those instead.
+            double effectiveKg = pickWeight(item);
+            // Mirror the chosen weight back into `kg` so downstream code & old reports keep working.
+            item.setKg(effectiveKg);
+            if (item.getTotalWeight() == null || item.getTotalWeight() <= 0) {
+                item.setTotalWeight(effectiveKg);
+            }
             if (item.getMeters() == null) item.setMeters(0.0);
             if (item.getRoll() == null) item.setRoll(0);
-            if (item.getKg() <= 0 && item.getRoll() <= 0 && item.getMeters() <= 0) {
+
+            if (effectiveKg <= 0 && item.getRoll() <= 0 && item.getMeters() <= 0) {
                 throw new RuntimeException(
                         "Item '" + item.getQuality()
                         + "' needs at least one of weight (kg), rolls, or meters greater than 0");
@@ -121,6 +129,22 @@ public class InwardService {
 
     private static double safeAdd(Double a, Double b) {
         return (a == null ? 0.0 : a) + (b == null ? 0.0 : b);
+    }
+
+    /**
+     * Resolve the kg value that should flow into inventory.
+     * Order of precedence: totalWeight → kg → fabricWeight + ribWeight.
+     */
+    private static double pickWeight(InwardItem item) {
+        if (item.getTotalWeight() != null && item.getTotalWeight() > 0) {
+            return item.getTotalWeight();
+        }
+        if (item.getKg() != null && item.getKg() > 0) {
+            return item.getKg();
+        }
+        double fw = item.getFabricWeight() == null ? 0.0 : item.getFabricWeight();
+        double rw = item.getRibWeight() == null ? 0.0 : item.getRibWeight();
+        return fw + rw;
     }
 
     private static int safeAddInt(Integer a, Integer b) {

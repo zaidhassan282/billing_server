@@ -47,6 +47,14 @@ public class InwardGatePass {
     private String securityGuardName;
     private String checkedBy;
 
+    // --- New fields (per latest spec) ---
+    /** Dye house / dyeing party associated with this batch. */
+    private String dyeing;
+    /** Process challan number printed on the document. */
+    private String pChallanNo;
+    /** Promised delivery date back to the customer. */
+    private LocalDate deliveryDate;
+
     @OneToMany(mappedBy = "inward", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<InwardItem> items;
 }

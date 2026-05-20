@@ -31,8 +31,8 @@ public class Entry {
     private String quality;
     private String colour;
 
-    private Double greyInRoll;
-    private Double greyInKg;
+    private Double GreighInRoll;
+    private Double GreighInKg;
 
     private Double dyedFabricARoll;
     private Double dyedFabricOutAKg;

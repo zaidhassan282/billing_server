@@ -22,8 +22,8 @@ public class InventoryController {
         return inventoryRepo.findAll();
     }
 
-    @GetMapping("/grey")
-    public List<Inventory> getGrey() {
+    @GetMapping("/Greigh")
+    public List<Inventory> getGreigh() {
         return inventoryRepo.findByStage("GREIGH");
     }
 

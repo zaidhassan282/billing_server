@@ -78,7 +78,7 @@ public class OutwardGatePassService {
             }
 
             // Both DELIVERY and RETURN deduct (per business rule:
-            // "When grey/dyed is used or returned it decrements inventory").
+            // "When Greigh/dyed is used or returned it decrements inventory").
             deductFromInventory(contractNo, stage, item);
         }
 

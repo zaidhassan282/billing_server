@@ -30,17 +30,25 @@ public class PermanentTableController {
     @PostMapping
     public PermanentTable save(@RequestBody PermanentTable data) {
 
-        repo.findByNtn(data.getNtn()).ifPresent(existing -> {
-            if (!existing.getId().equals(data.getId())) {
-                throw new RuntimeException("NTN already exists");
-            }
-        });
+        // Normalize blanks to null so the DB unique constraint allows multiple rows without an NTN
+        if (data.getNtn() != null && data.getNtn().isBlank()) data.setNtn(null);
+        if (data.getNameOfParty() != null && data.getNameOfParty().isBlank()) data.setNameOfParty(null);
 
-        repo.findByNameOfParty(data.getNameOfParty()).ifPresent(existing -> {
-            if (!existing.getId().equals(data.getId())) {
-                throw new RuntimeException("Party Name already exists");
-            }
-        });
+        if (data.getNtn() != null) {
+            repo.findByNtn(data.getNtn()).ifPresent(existing -> {
+                if (!existing.getId().equals(data.getId())) {
+                    throw new RuntimeException("NTN already exists");
+                }
+            });
+        }
+
+        if (data.getNameOfParty() != null) {
+            repo.findByNameOfParty(data.getNameOfParty()).ifPresent(existing -> {
+                if (!existing.getId().equals(data.getId())) {
+                    throw new RuntimeException("Party Name already exists");
+                }
+            });
+        }
 
         boolean isUpdate = data.getId() != null;
         Object before = isUpdate

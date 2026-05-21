@@ -33,6 +33,8 @@ public class Contract {
 
     private String quality;
 
+    private String color;
+
     private Double weight;
 
     private Double rateA;

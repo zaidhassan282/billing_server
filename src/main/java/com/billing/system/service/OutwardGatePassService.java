@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -140,5 +141,83 @@ public class OutwardGatePassService {
     public OutwardGatePass getByOutwardId(String outwardId) {
         return outwardRepo.findByOutwardId(outwardId)
                 .orElseThrow(() -> new RuntimeException("Outward not found: " + outwardId));
+    }
+
+    /**
+     * Records-only update of an existing gate pass.
+     * NOTE: inventory is intentionally NOT re-deducted — only the original
+     * create deducts stock — so editing a gate pass can never double-decrement
+     * inventory. Correct stock on the Inventory page if an edit changes
+     * quantities.
+     */
+    @Transactional
+    public OutwardGatePass update(Long id, OutwardGatePass patch) {
+        OutwardGatePass existing = outwardRepo.findById(id)
+                .orElseThrow(() -> new RuntimeException("Outward gate pass not found: " + id));
+        Object before = audit.snapshot(existing);
+
+        if (patch.getContractNo() == null || patch.getContractNo().isEmpty()) {
+            throw new RuntimeException("Contract No is required");
+        }
+        if (patch.getCustomerName() == null || patch.getCustomerName().isEmpty()) {
+            throw new RuntimeException("Customer name is required");
+        }
+        if (patch.getItems() == null || patch.getItems().isEmpty()) {
+            throw new RuntimeException("At least one item is required");
+        }
+
+        if (patch.getDated() != null) existing.setDated(patch.getDated());
+        existing.setInwardId(patch.getInwardId());
+        existing.setContractNo(patch.getContractNo());
+        existing.setCustomerCode(patch.getCustomerCode());
+        existing.setCustomerName(patch.getCustomerName());
+        existing.setCustomerLotNo(patch.getCustomerLotNo());
+        existing.setFactoryLotNo(patch.getFactoryLotNo());
+        if (patch.getType() != null && !patch.getType().isEmpty()) {
+            existing.setType(patch.getType());
+        }
+        existing.setAddress(patch.getAddress());
+        existing.setVehicleNo(patch.getVehicleNo());
+        existing.setDriverName(patch.getDriverName());
+        existing.setReferenceNo(patch.getReferenceNo());
+        existing.setFabricType(patch.getFabricType());
+        existing.setGateTime(patch.getGateTime());
+        existing.setSecurityGuardName(patch.getSecurityGuardName());
+        existing.setCheckedBy(patch.getCheckedBy());
+
+        // Replace item rows (orphanRemoval deletes the old ones)
+        if (existing.getItems() == null) {
+            existing.setItems(new ArrayList<>());
+        } else {
+            existing.getItems().clear();
+        }
+        for (OutwardItem it : patch.getItems()) {
+            it.setId(null);
+            it.setOutward(existing);
+            if (it.getQuality() == null || it.getQuality().isEmpty()) {
+                throw new RuntimeException("Quality is required");
+            }
+            if (it.getKg() == null) it.setKg(0.0);
+            if (it.getMeters() == null) it.setMeters(0.0);
+            if (it.getRoll() == null) it.setRoll(0);
+            if (it.getColor() == null || it.getColor().isEmpty()) it.setColor("NA");
+            existing.getItems().add(it);
+        }
+
+        OutwardGatePass saved = outwardRepo.save(existing);
+        audit.logUpdate("OutwardGatePass", String.valueOf(saved.getId()), saved.getOutwardId(),
+                before, saved, "Outward gate pass " + saved.getOutwardId() + " updated");
+        return saved;
+    }
+
+    /** Records-only delete — inventory is not restored. Audit-logged. */
+    @Transactional
+    public void delete(Long id) {
+        OutwardGatePass existing = outwardRepo.findById(id).orElse(null);
+        if (existing == null) return;
+        Object before = audit.snapshot(existing);
+        outwardRepo.deleteById(id);
+        audit.logDelete("OutwardGatePass", String.valueOf(id), existing.getOutwardId(), before,
+                "Outward gate pass " + existing.getOutwardId() + " deleted");
     }
 }

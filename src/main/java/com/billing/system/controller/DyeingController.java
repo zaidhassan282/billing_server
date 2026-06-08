@@ -32,4 +32,14 @@ public class DyeingController {
     public List<IssueToDyeing> getByContract(@PathVariable String contractNo) {
         return service.getByContract(contractNo);
     }
+
+    @PutMapping("/issue/{id}")
+    public IssueToDyeing update(@PathVariable Long id, @RequestBody IssueRequest req) {
+        return service.update(id, req);
+    }
+
+    @DeleteMapping("/issue/{id}")
+    public void delete(@PathVariable Long id) {
+        service.delete(id);
+    }
 }

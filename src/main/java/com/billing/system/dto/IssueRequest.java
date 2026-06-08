@@ -20,6 +20,9 @@ public class IssueRequest {
     private Integer qtyRolls;
     private Double qtyMeters;
 
+    /** Source stock the issue draws from: GREIGH (first-time dyeing) or DYED (re-dyeing). Defaults to GREIGH. */
+    private String source;
+
     private String remarks;
 
     public String resolveInwardRef() {

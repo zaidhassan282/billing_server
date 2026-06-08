@@ -34,6 +34,10 @@ public class IssueToDyeing {
 
     private LocalDate date;
 
+    /** Stock the issue was drawn from: GREIGH (first-time dyeing) or DYED (re-dyeing). */
+    @Column(length = 16)
+    private String sourceStage;
+
     @Column(length = 512)
     private String remarks;
 }

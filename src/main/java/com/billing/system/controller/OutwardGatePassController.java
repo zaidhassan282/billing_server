@@ -46,4 +46,14 @@ public class OutwardGatePassController {
     public OutwardGatePass getOne(@PathVariable String outwardId) {
         return outwardService.getByOutwardId(outwardId);
     }
+
+    @PutMapping("/{id}")
+    public OutwardGatePass update(@PathVariable Long id, @RequestBody OutwardGatePass outward) {
+        return outwardService.update(id, outward);
+    }
+
+    @DeleteMapping("/{id}")
+    public void delete(@PathVariable Long id) {
+        outwardService.delete(id);
+    }
 }

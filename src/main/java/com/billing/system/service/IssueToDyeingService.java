@@ -65,10 +65,12 @@ public class IssueToDyeingService {
 
         String color = (req.getColor() == null || req.getColor().isEmpty()) ? "NA" : req.getColor();
 
+        FabricStage sourceStage = resolveSourceStage(req.getSource());
+
         Inventory inv = inventoryRepo
-                .findByContractNoAndQualityAndColorAndStage(contractNo, req.getQuality(), color, FabricStage.GREIGH.name())
+                .findByContractNoAndQualityAndColorAndStage(contractNo, req.getQuality(), color, sourceStage.name())
                 .orElseThrow(() -> new RuntimeException(
-                        "No greige stock for contract " + contractNo
+                        "No " + sourceStage.name().toLowerCase() + " stock for contract " + contractNo
                                 + " — " + req.getQuality() + " / " + color));
 
         double availKg = inv.getAvailableKg() == null ? 0.0 : inv.getAvailableKg();
@@ -100,6 +102,7 @@ public class IssueToDyeingService {
         record.setQuantityRolls(qtyRolls);
         record.setQuantityMeters(qtyMeters);
         record.setDate(LocalDate.now());
+        record.setSourceStage(sourceStage.name());
         record.setRemarks(req.getRemarks());
 
         IssueToDyeing saved = issueRepo.save(record);
@@ -112,7 +115,7 @@ public class IssueToDyeingService {
         m.setQuality(req.getQuality());
         m.setQuantityKg(qtyKg);
         m.setType(MovementType.ISSUE_TO_DYEING);
-        m.setFromStage(FabricStage.GREIGH);
+        m.setFromStage(sourceStage);
         m.setToStage(FabricStage.DYEING);
         m.setDated(LocalDate.now());
         movementRepo.save(m);
@@ -145,6 +148,14 @@ public class IssueToDyeingService {
         return saved;
     }
 
+    /** Parses the source stage from the request; defaults to GREIGH. Only GREIGH and DYED are valid. */
+    private static FabricStage resolveSourceStage(String raw) {
+        String value = (raw == null || raw.isEmpty()) ? FabricStage.GREIGH.name() : raw.trim().toUpperCase();
+        if (FabricStage.GREIGH.name().equals(value)) return FabricStage.GREIGH;
+        if (FabricStage.DYED.name().equals(value))   return FabricStage.DYED;
+        throw new RuntimeException("Source must be GREIGH or DYED (got: " + raw + ")");
+    }
+
     private String generateIssueId() {
         String yy = String.valueOf(LocalDate.now().getYear()).substring(2);
         String prefix = "ITD" + yy;
@@ -168,5 +179,49 @@ public class IssueToDyeingService {
 
     public List<IssueToDyeing> getByContract(String contractNo) {
         return issueRepo.findByContractNo(contractNo, NEWEST_FIRST);
+    }
+
+    /**
+     * Records-only update of an existing Issue to Dyeing.
+     * NOTE: inventory and the auto-created Order are intentionally NOT touched —
+     * only the original create deducts stock and spawns an Order. Correct stock
+     * on the Inventory page if an edit changes quantities.
+     */
+    @Transactional
+    public IssueToDyeing update(Long id, IssueRequest req) {
+        IssueToDyeing existing = issueRepo.findById(id)
+                .orElseThrow(() -> new RuntimeException("Issue to Dyeing not found: " + id));
+        Object before = audit.snapshot(existing);
+
+        if (req.getContractNo() != null && !req.getContractNo().isEmpty()) {
+            existing.setContractNo(req.getContractNo());
+        }
+        String inwardRef = req.resolveInwardRef();
+        if (inwardRef != null && !inwardRef.isEmpty()) existing.setInwardId(inwardRef);
+        if (req.getQuality() != null && !req.getQuality().isEmpty()) existing.setQuality(req.getQuality());
+        existing.setColor((req.getColor() == null || req.getColor().isEmpty()) ? "NA" : req.getColor());
+        if (req.getQtyKg() != null) existing.setQuantityKg(req.getQtyKg());
+        if (req.getQtyRolls() != null) existing.setQuantityRolls(req.getQtyRolls());
+        if (req.getQtyMeters() != null) existing.setQuantityMeters(req.getQtyMeters());
+        if (req.getSource() != null && !req.getSource().isEmpty()) {
+            existing.setSourceStage(resolveSourceStage(req.getSource()).name());
+        }
+        existing.setRemarks(req.getRemarks());
+
+        IssueToDyeing saved = issueRepo.save(existing);
+        audit.logUpdate("IssueToDyeing", String.valueOf(saved.getId()), saved.getIssueId(),
+                before, saved, "Issue to Dyeing " + saved.getIssueId() + " updated");
+        return saved;
+    }
+
+    /** Records-only delete — inventory is not restored, linked Order stays. Audit-logged. */
+    @Transactional
+    public void delete(Long id) {
+        IssueToDyeing existing = issueRepo.findById(id).orElse(null);
+        if (existing == null) return;
+        Object before = audit.snapshot(existing);
+        issueRepo.deleteById(id);
+        audit.logDelete("IssueToDyeing", String.valueOf(id), existing.getIssueId(), before,
+                "Issue to Dyeing " + existing.getIssueId() + " deleted");
     }
 }

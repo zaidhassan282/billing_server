@@ -37,4 +37,14 @@ public class InwardController {
     public InwardGatePass getOne(@PathVariable String inwardId) {
         return inwardService.getByInwardId(inwardId);
     }
+
+    @PutMapping("/{id}")
+    public InwardGatePass update(@PathVariable Long id, @RequestBody InwardGatePass inward) {
+        return inwardService.update(id, inward);
+    }
+
+    @DeleteMapping("/{id}")
+    public void delete(@PathVariable Long id) {
+        inwardService.delete(id);
+    }
 }

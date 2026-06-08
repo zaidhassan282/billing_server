@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -59,8 +60,10 @@ public class InwardService {
         for (InwardItem item : inward.getItems()) {
             item.setInward(inward);
 
+            // Quality is optional — default blank to "NA" so the per-contract
+            // inventory key (contract/quality/color/stage) still has a value.
             if (item.getQuality() == null || item.getQuality().isEmpty()) {
-                throw new RuntimeException("Quality is required");
+                item.setQuality("NA");
             }
             // Authoritative weight for inventory: prefer totalWeight, fall back to kg,
             // then to fabricWeight + ribWeight if the user filled those instead.
@@ -158,5 +161,86 @@ public class InwardService {
     public InwardGatePass getByInwardId(String inwardId) {
         return inwardRepo.findByInwardId(inwardId)
                 .orElseThrow(() -> new RuntimeException("Inward not found: " + inwardId));
+    }
+
+    /**
+     * Records-only update of an existing gate pass.
+     * NOTE: inventory and the fabric-movement ledger are intentionally NOT
+     * re-applied — only the original create merges stock — so editing a gate
+     * pass can never double-count inventory. Correct stock on the Inventory
+     * page if an edit changes quantities.
+     */
+    @Transactional
+    public InwardGatePass update(Long id, InwardGatePass patch) {
+        InwardGatePass existing = inwardRepo.findById(id)
+                .orElseThrow(() -> new RuntimeException("Inward gate pass not found: " + id));
+        Object before = audit.snapshot(existing);
+
+        if (patch.getContractNo() == null || patch.getContractNo().isEmpty()) {
+            throw new RuntimeException("Contract No is required");
+        }
+        if (patch.getItems() == null || patch.getItems().isEmpty()) {
+            throw new RuntimeException("At least one item is required");
+        }
+
+        if (patch.getDated() != null) existing.setDated(patch.getDated());
+        existing.setContractNo(patch.getContractNo());
+        existing.setPartyCode(patch.getPartyCode());
+        existing.setNameOfParty(patch.getNameOfParty());
+        existing.setSupplierName(patch.getSupplierName());
+        existing.setCustomerLotNo(patch.getCustomerLotNo());
+        existing.setFactoryLotNo(patch.getFactoryLotNo());
+        existing.setAddress(patch.getAddress());
+        existing.setVehicleNo(patch.getVehicleNo());
+        existing.setDriverName(patch.getDriverName());
+        existing.setReferenceNo(patch.getReferenceNo());
+        existing.setFabricType(patch.getFabricType());
+        existing.setIsDyedFabric(patch.getIsDyedFabric());
+        existing.setIsGreigeFabric(patch.getIsGreigeFabric());
+        existing.setGateTime(patch.getGateTime());
+        existing.setSecurityGuardName(patch.getSecurityGuardName());
+        existing.setCheckedBy(patch.getCheckedBy());
+        existing.setDyeing(patch.getDyeing());
+        existing.setPChallanNo(patch.getPChallanNo());
+        existing.setDeliveryDate(patch.getDeliveryDate());
+
+        // Replace the item rows (orphanRemoval deletes the old ones).
+        if (existing.getItems() == null) {
+            existing.setItems(new ArrayList<>());
+        } else {
+            existing.getItems().clear();
+        }
+        for (InwardItem it : patch.getItems()) {
+            it.setId(null);
+            it.setInward(existing);
+            if (it.getQuality() == null || it.getQuality().isEmpty()) {
+                it.setQuality("NA");
+            }
+            double effectiveKg = pickWeight(it);
+            it.setKg(effectiveKg);
+            if (it.getTotalWeight() == null || it.getTotalWeight() <= 0) {
+                it.setTotalWeight(effectiveKg);
+            }
+            if (it.getMeters() == null) it.setMeters(0.0);
+            if (it.getRoll() == null) it.setRoll(0);
+            if (it.getColor() == null || it.getColor().isEmpty()) it.setColor("NA");
+            existing.getItems().add(it);
+        }
+
+        InwardGatePass saved = inwardRepo.save(existing);
+        audit.logUpdate("InwardGatePass", String.valueOf(saved.getId()), saved.getInwardId(),
+                before, saved, "Inward gate pass " + saved.getInwardId() + " updated");
+        return saved;
+    }
+
+    /** Records-only delete — inventory is not reversed. Audit-logged. */
+    @Transactional
+    public void delete(Long id) {
+        InwardGatePass existing = inwardRepo.findById(id).orElse(null);
+        if (existing == null) return;
+        Object before = audit.snapshot(existing);
+        inwardRepo.deleteById(id);
+        audit.logDelete("InwardGatePass", String.valueOf(id), existing.getInwardId(), before,
+                "Inward gate pass " + existing.getInwardId() + " deleted");
     }
 }

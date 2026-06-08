@@ -40,6 +40,16 @@ public class DyedReceive {
 
     private Double shrinkage;
 
+    /** Foreign key to the source Issue to Dyeing — Dyed Receive is the completed-work pool for that issue. */
+    private Long issueToDyeingId;
+
+    /** Denormalised business id of the linked Issue (e.g. "ITD26001") for display & easy joins. */
+    @Column(length = 32)
+    private String issueId;
+
+    /** Net kg available for delivery from this receipt (= quantityKg − cut − shrinkage, minus what's been delivered). */
+    private Double availableKg;
+
     @Column(unique = true)
     private String newId;
 }

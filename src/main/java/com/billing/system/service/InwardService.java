@@ -12,7 +12,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
 
 @Service
 public class InwardService {
@@ -36,7 +35,10 @@ public class InwardService {
     public InwardGatePass save(InwardGatePass inward) {
 
         if (inward.getInwardId() == null || inward.getInwardId().isEmpty()) {
-            inward.setInwardId("IGP-" + UUID.randomUUID().toString().substring(0, 6).toUpperCase());
+            // Match the IGP{yy}{seq} format the frontend's add-form generates,
+            // so imported rows (which leave inwardId blank) get the same kind
+            // of ID — IGP26001, IGP26002, … — not a one-off UUID.
+            inward.setInwardId(generateInwardId());
         }
 
         if (inward.getDated() == null) {
@@ -242,5 +244,26 @@ public class InwardService {
         inwardRepo.deleteById(id);
         audit.logDelete("InwardGatePass", String.valueOf(id), existing.getInwardId(), before,
                 "Inward gate pass " + existing.getInwardId() + " deleted");
+    }
+
+    /**
+     * Build the next Inward Gate Pass id in IGP{yy}{seq} format
+     * (e.g. {@code IGP26001}). Mirrors the frontend's {@code generateInwardId}
+     * so user-form rows and imported rows share the same sequence — and old
+     * {@code IGP-XXXXXX} UUID rows are simply ignored.
+     */
+    private String generateInwardId() {
+        String yy = String.valueOf(LocalDate.now().getYear()).substring(2);
+        String prefix = "IGP" + yy;
+        int max = inwardRepo.findAll().stream()
+                .map(InwardGatePass::getInwardId)
+                .filter(s -> s != null && s.startsWith(prefix))
+                .map(s -> {
+                    try { return Integer.parseInt(s.substring(prefix.length())); }
+                    catch (Exception e) { return 0; }
+                })
+                .max(Integer::compareTo)
+                .orElse(0);
+        return prefix + String.format("%03d", max + 1);
     }
 }

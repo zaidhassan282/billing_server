@@ -2,8 +2,11 @@ package com.billing.system.service;
 
 import com.billing.system.entity.DyedReceive;
 import com.billing.system.entity.IssueToDyeing;
+import com.billing.system.entity.OutwardGatePass;
+import com.billing.system.entity.OutwardItem;
 import com.billing.system.repository.DyedReceiveRepository;
 import com.billing.system.repository.IssueToDyeingRepository;
+import com.billing.system.repository.OutwardGatePassRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -18,25 +21,29 @@ import java.util.List;
  *
  * Lifecycle of one receipt:
  *   - Created against an Issue to Dyeing (FK).
- *   - {@code availableKg} initialised to {@code netKg = quantityKg - cut - shrinkage}.
- *   - Decremented later when an Outward GP draws from this receipt
- *     (Phase 2 — Outward source-pool picker).
+ *   - {@code availableKg} initialised to {@code netKg = quantityKg - cut - shrinkage%}.
+ *   - Decremented by {@code OutwardGatePassService} as deliveries draw from
+ *     this DR; refunded on OGP delete; rebalanced on OGP edit.
  *
  * Edit and Delete are records-only: identity fields (issue link, contract,
- * quality, color) are not editable; quantities can be corrected.
+ * quality, color) are not editable; quantities can be corrected, but an
+ * edit that would push net below what's already been delivered is rejected.
  */
 @Service
 public class DyedReceiveService {
 
     private final DyedReceiveRepository dyedRepo;
     private final IssueToDyeingRepository issueRepo;
+    private final OutwardGatePassRepository outwardRepo;
     private final AuditService audit;
 
     public DyedReceiveService(DyedReceiveRepository dyedRepo,
                               IssueToDyeingRepository issueRepo,
+                              OutwardGatePassRepository outwardRepo,
                               AuditService audit) {
         this.dyedRepo = dyedRepo;
         this.issueRepo = issueRepo;
+        this.outwardRepo = outwardRepo;
         this.audit = audit;
     }
 
@@ -85,10 +92,11 @@ public class DyedReceiveService {
 
     /**
      * Records-only update. Identity fields (issue link, contract, quality, color)
-     * are NOT changeable. Quantities can be corrected; availableKg is recomputed
-     * from the new net. (Note: this v1 recompute ignores any prior Outward draws
-     * — once the source-pool Outward path lands in Phase 2 we'll need to
-     * subtract delivered qty too.)
+     * are NOT changeable. Quantities can be corrected; {@code availableKg} is
+     * recomputed as {@code net - alreadyDelivered}, where {@code alreadyDelivered}
+     * sums the kg of every OGP already drawn from this DR — so the pool stays
+     * truthful after the edit. An edit that would push net below
+     * {@code alreadyDelivered} is rejected.
      */
     @Transactional
     public DyedReceive update(Long id, DyedReceive patch) {
@@ -117,7 +125,21 @@ public class DyedReceiveService {
         double shrinkPercent = existing.getShrinkage() == null ? 0.0 : existing.getShrinkage();
         double q = existing.getQuantityKg() == null ? 0.0 : existing.getQuantityKg();
         double shrinkKg = q * shrinkPercent / 100.0;
-        existing.setAvailableKg(Math.max(0.0, q - cut - shrinkKg));
+        double newNet = Math.max(0.0, q - cut - shrinkKg);
+
+        // Already-delivered guard: an edit that lowers net below what's already
+        // been shipped via OGPs would silently create over-delivery. Reject it
+        // with a clear message — operator can delete the offending OGP first
+        // and then retry the edit.
+        double alreadyDelivered = sumDeliveredKg(existing.getId());
+        if (alreadyDelivered > newNet + 0.001) {
+            throw new RuntimeException(
+                    "Can't lower DR " + existing.getNewId() + " net below the "
+                    + alreadyDelivered + " kg already delivered to customers. "
+                    + "Delete or shrink the matching Outward Gate Pass first."
+            );
+        }
+        existing.setAvailableKg(Math.max(0.0, newNet - alreadyDelivered));
 
         DyedReceive saved = dyedRepo.save(existing);
         audit.logUpdate("DyedReceive", String.valueOf(saved.getId()), saved.getNewId(),
@@ -145,6 +167,23 @@ public class DyedReceiveService {
 
     private static boolean isBlank(String s) {
         return s == null || s.isEmpty();
+    }
+
+    /**
+     * Sum of kg shipped via every Outward GP drawn from the given DR.
+     * Mirrors {@code OutwardGatePassService.sumItemKg}. Returns 0.0 if the
+     * DR has no OGPs yet.
+     */
+    private double sumDeliveredKg(Long dyedReceiveId) {
+        if (dyedReceiveId == null) return 0.0;
+        double sum = 0.0;
+        for (OutwardGatePass ogp : outwardRepo.findByDyedReceiveId(dyedReceiveId)) {
+            if (ogp.getItems() == null) continue;
+            for (OutwardItem it : ogp.getItems()) {
+                sum += it.getKg() == null ? 0.0 : it.getKg();
+            }
+        }
+        return sum;
     }
 
     /**

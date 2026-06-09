@@ -1,0 +1,68 @@
+package com.billing.system.config;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.boot.ApplicationRunner;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.jdbc.core.JdbcTemplate;
+
+/**
+ * One-shot schema cleanups that run after Hibernate's {@code ddl-auto=update}
+ * has finished. Every statement is idempotent (uses {@code IF EXISTS}) so
+ * it's safe to leave wired in place forever — fresh DBs no-op, existing
+ * DBs get cleaned up exactly once.
+ *
+ * Why this exists: {@code ddl-auto=update} only ADDS mapped columns; it
+ * never DROPS old ones after a rename. The DR→OGP rewire renamed
+ * {@code Invoice.dyedReceiveId} → {@code outwardGatePassId}, leaving the
+ * old {@code dyed_receive_id} column (and its unique constraint) orphaned
+ * in any DB that existed before the rewire. Old invoice rows still point
+ * to the dead column and show blank qty/DR in the UI.
+ *
+ * Add more idempotent statements below as future schema renames land.
+ */
+@Configuration
+public class SchemaCleanupRunner {
+
+    private static final Logger log = LoggerFactory.getLogger(SchemaCleanupRunner.class);
+
+    @Bean
+    ApplicationRunner schemaCleanups(JdbcTemplate jdbc) {
+        return args -> {
+            // BUG-2: drop the orphan dyed_receive_id column on invoice.
+            // Postgres and H2 (in MODE=PostgreSQL) both honour IF EXISTS +
+            // CASCADE; the latter takes any unique constraint with it.
+            tryCleanup(jdbc,
+                    "ALTER TABLE invoice DROP COLUMN IF EXISTS dyed_receive_id CASCADE",
+                    "invoice.dyed_receive_id");
+
+            // Wipe rows that were created against the old FK and now have
+            // no OGP link — they'd render as blank-qty / blank-DR rows in
+            // the UI. Safe even when there are none.
+            tryCleanup(jdbc,
+                    "DELETE FROM invoice WHERE outward_gate_pass_id IS NULL",
+                    "invoice rows with NULL outward_gate_pass_id");
+        };
+    }
+
+    /**
+     * Run one DDL/DML statement and swallow any failure with a clear log
+     * message — schema cleanups must never block app startup. A failure
+     * here is almost always "table doesn't exist yet on a fresh DB", which
+     * is fine.
+     */
+    private static void tryCleanup(JdbcTemplate jdbc, String sql, String description) {
+        try {
+            int affected = jdbc.update(sql);
+            if (affected > 0) {
+                log.info("Schema cleanup: {} → {} row(s) affected", description, affected);
+            } else {
+                log.info("Schema cleanup: {} → already clean", description);
+            }
+        } catch (Exception e) {
+            log.warn("Schema cleanup skipped for {}: {} (safe to ignore on a fresh DB)",
+                    description, e.getMessage());
+        }
+    }
+}

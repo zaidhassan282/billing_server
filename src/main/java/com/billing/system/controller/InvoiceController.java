@@ -29,8 +29,9 @@ public class InvoiceController {
     }
 
     /**
-     * Create — the body just needs {@code dyedReceiveId}; everything else is
-     * auto-filled from the linked DR / Contract. Returns the saved entity.
+     * Create — the body just needs {@code outwardGatePassId}; everything
+     * else is auto-filled from the linked OGP / DR / Contract. Returns the
+     * saved invoice as a view.
      */
     @PostMapping
     public InvoiceView save(@RequestBody Invoice invoice) {

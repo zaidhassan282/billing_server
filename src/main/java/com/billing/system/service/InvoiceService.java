@@ -4,9 +4,12 @@ import com.billing.system.dto.InvoiceView;
 import com.billing.system.entity.Contract;
 import com.billing.system.entity.DyedReceive;
 import com.billing.system.entity.Invoice;
+import com.billing.system.entity.OutwardGatePass;
+import com.billing.system.entity.OutwardItem;
 import com.billing.system.repository.ContractRepository;
 import com.billing.system.repository.DyedReceiveRepository;
 import com.billing.system.repository.InvoiceRepository;
+import com.billing.system.repository.OutwardGatePassRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -14,52 +17,62 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.stream.Collectors;
 
+/**
+ * Invoice service — Invoice now hangs off an Outward Gate Pass (the
+ * delivery step). Identity is snapshot from the linked OGP / DR /
+ * Contract; qty + rate are live-derived each read.
+ */
 @Service
 public class InvoiceService {
 
     private static final double GST_RATE = 0.18;
 
     private final InvoiceRepository invoiceRepo;
+    private final OutwardGatePassRepository outwardRepo;
     private final DyedReceiveRepository dyedRepo;
     private final ContractRepository contractRepo;
     private final AuditService audit;
 
     public InvoiceService(InvoiceRepository invoiceRepo,
+                          OutwardGatePassRepository outwardRepo,
                           DyedReceiveRepository dyedRepo,
                           ContractRepository contractRepo,
                           AuditService audit) {
         this.invoiceRepo = invoiceRepo;
+        this.outwardRepo = outwardRepo;
         this.dyedRepo = dyedRepo;
         this.contractRepo = contractRepo;
         this.audit = audit;
     }
 
     /**
-     * Create a new invoice against a Dyed Receive. Pre-fills the snapshot
-     * identity fields (contractNo, party, GST default, payment terms default)
-     * from the linked DR and its Contract. Rejects if the DR is already
-     * invoiced (1:1 invariant).
+     * Create a new invoice against an Outward Gate Pass. Pre-fills the
+     * snapshot identity fields (contract, party, GST default, payment
+     * terms default) from the OGP and its Contract. Rejects if the OGP is
+     * already invoiced (1:1 invariant).
      */
     @Transactional
     public Invoice save(Invoice invoice) {
-        if (invoice.getDyedReceiveId() == null) {
-            throw new RuntimeException("Dyed Receive reference is required");
+        if (invoice.getOutwardGatePassId() == null) {
+            throw new RuntimeException("Outward Gate Pass reference is required");
         }
-        if (invoiceRepo.findByDyedReceiveId(invoice.getDyedReceiveId()).isPresent()) {
-            throw new RuntimeException("An invoice already exists for this Dyed Receive");
+        if (invoiceRepo.findByOutwardGatePassId(invoice.getOutwardGatePassId()).isPresent()) {
+            throw new RuntimeException("An invoice already exists for this Outward Gate Pass");
         }
-        DyedReceive dr = dyedRepo.findById(invoice.getDyedReceiveId())
+        OutwardGatePass ogp = outwardRepo.findById(invoice.getOutwardGatePassId())
                 .orElseThrow(() -> new RuntimeException(
-                        "Dyed Receive not found: " + invoice.getDyedReceiveId()));
+                        "Outward Gate Pass not found: " + invoice.getOutwardGatePassId()));
 
-        invoice.setContractNo(dr.getContractNo());
+        invoice.setContractNo(ogp.getContractNo());
+        invoice.setPartyCode(ogp.getCustomerCode());
+        invoice.setNameOfParty(ogp.getCustomerName());
 
-        Contract contract = (dr.getContractNo() != null && !dr.getContractNo().isEmpty())
-                ? contractRepo.findByContractNo(dr.getContractNo())
+        Contract contract = (ogp.getContractNo() != null && !ogp.getContractNo().isEmpty())
+                ? contractRepo.findByContractNo(ogp.getContractNo())
                 : null;
         if (contract != null) {
-            invoice.setPartyCode(contract.getPartyCode());
-            invoice.setNameOfParty(contract.getNameOfParty());
+            if (isBlank(invoice.getPartyCode()))   invoice.setPartyCode(contract.getPartyCode());
+            if (isBlank(invoice.getNameOfParty())) invoice.setNameOfParty(contract.getNameOfParty());
             if (isBlank(invoice.getGstInvoiceYesNo())) {
                 invoice.setGstInvoiceYesNo(contract.getGstInvoiceYesNo());
             }
@@ -73,13 +86,14 @@ public class InvoiceService {
 
         Invoice saved = invoiceRepo.save(invoice);
         audit.logCreate("Invoice", String.valueOf(saved.getId()), saved.getInvoiceNo(),
-                saved, "Invoice " + saved.getInvoiceNo() + " for DR id " + saved.getDyedReceiveId());
+                saved, "Invoice " + saved.getInvoiceNo()
+                        + " for OGP " + ogp.getOutwardId());
         return saved;
     }
 
     /**
      * Records-only update — only the "anyone-can-make-a-mistake" fields:
-     * date, GST flag, payment terms, remarks. Identity fields (DR link,
+     * date, GST flag, payment terms, remarks. Identity fields (OGP link,
      * contract, party, invoiceNo) are NOT changeable; correct via delete +
      * regenerate if they're wrong.
      */
@@ -123,16 +137,16 @@ public class InvoiceService {
     }
 
     /**
-     * Build the InvoiceView (stored + derived) for an Invoice. Rate is read
-     * live from Contract.rateA; qty is the DR's net (received − cut − shrinkage%);
-     * amount/GST/total fall out from those two numbers.
+     * Build the InvoiceView (stored + derived) for an Invoice. Walks
+     * Invoice → OGP → DR → Contract, surfacing display fields and computing
+     * amounts from the OGP's delivered kg × Contract.rateA.
      */
     public InvoiceView toView(Invoice inv) {
         InvoiceView v = new InvoiceView();
         v.setId(inv.getId());
         v.setInvoiceNo(inv.getInvoiceNo());
         v.setDated(inv.getDated());
-        v.setDyedReceiveId(inv.getDyedReceiveId());
+        v.setOutwardGatePassId(inv.getOutwardGatePassId());
         v.setContractNo(inv.getContractNo());
         v.setPartyCode(inv.getPartyCode());
         v.setNameOfParty(inv.getNameOfParty());
@@ -140,19 +154,25 @@ public class InvoiceService {
         v.setPaymentTerms(inv.getPaymentTerms());
         v.setRemarks(inv.getRemarks());
 
-        DyedReceive dr = inv.getDyedReceiveId() != null
-                ? dyedRepo.findById(inv.getDyedReceiveId()).orElse(null)
+        OutwardGatePass ogp = inv.getOutwardGatePassId() != null
+                ? outwardRepo.findById(inv.getOutwardGatePassId()).orElse(null)
                 : null;
-        if (dr != null) {
-            v.setDrId(dr.getNewId());
-            v.setIssueId(dr.getIssueId());
-            v.setQuality(dr.getQuality());
-            v.setColor(dr.getColor());
-            double qty = nz(dr.getQuantityKg());
-            double cut = nz(dr.getCutPiecesKg());
-            double shrinkPct = nz(dr.getShrinkage());
-            double shrinkKg = qty * shrinkPct / 100.0;
-            v.setQtyKg(Math.max(0.0, qty - cut - shrinkKg));
+        if (ogp != null) {
+            v.setOutwardId(ogp.getOutwardId());
+            v.setQtyKg(sumItemKg(ogp.getItems()));
+
+            // OGP carries dyedReceiveId after the rewire — chain into DR for
+            // quality / color / issue / DR business id.
+            if (ogp.getDyedReceiveId() != null) {
+                v.setDyedReceiveId(ogp.getDyedReceiveId());
+                DyedReceive dr = dyedRepo.findById(ogp.getDyedReceiveId()).orElse(null);
+                if (dr != null) {
+                    v.setDrId(dr.getNewId());
+                    v.setIssueId(dr.getIssueId());
+                    v.setQuality(dr.getQuality());
+                    v.setColor(dr.getColor());
+                }
+            }
         }
 
         Contract c = (inv.getContractNo() != null && !inv.getContractNo().isEmpty())
@@ -186,6 +206,12 @@ public class InvoiceService {
         return prefix + String.format("%03d", max + 1);
     }
 
-    private static double nz(Double d) { return d == null ? 0.0 : d; }
+    private static double sumItemKg(List<OutwardItem> items) {
+        if (items == null) return 0.0;
+        double sum = 0.0;
+        for (OutwardItem it : items) sum += it.getKg() == null ? 0.0 : it.getKg();
+        return sum;
+    }
+
     private static boolean isBlank(String s) { return s == null || s.isEmpty(); }
 }

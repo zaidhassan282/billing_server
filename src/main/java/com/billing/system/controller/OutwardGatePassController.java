@@ -47,6 +47,12 @@ public class OutwardGatePassController {
         return outwardService.getByOutwardId(outwardId);
     }
 
+    /** All OGPs drawn from a given Dyed Receive — used by the DR detail view. */
+    @GetMapping("/by-dr/{dyedReceiveId}")
+    public List<OutwardGatePass> byDr(@PathVariable Long dyedReceiveId) {
+        return outwardService.getByDyedReceive(dyedReceiveId);
+    }
+
     @PutMapping("/{id}")
     public OutwardGatePass update(@PathVariable Long id, @RequestBody OutwardGatePass outward) {
         return outwardService.update(id, outward);

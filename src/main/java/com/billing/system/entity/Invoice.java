@@ -7,14 +7,16 @@ import lombok.Setter;
 import java.time.LocalDate;
 
 /**
- * Invoice — billing record against a Dyed Receive. Strict 1:1 with DR (the
- * {@code dyedReceiveId} column is unique). The rate, qty and totals are NOT
- * stored here: they live-derive from the linked DR and the Contract's
- * {@code rateA} every time the invoice is read, so a corrected contract rate
- * flows straight through to the invoice.
+ * Invoice — billing record against an Outward Gate Pass (the delivery
+ * step). Strict 1:1 with OGP (the {@code outwardGatePassId} column is
+ * unique). The rate and totals are NOT stored here: qty is read from the
+ * OGP's delivered kg, rate from {@code Contract.rateA}, every time the
+ * invoice is read, so a corrected contract rate flows straight through to
+ * the invoice.
  *
- * Editable fields (records-only, like our other entities): date, GST flag,
- * payment terms, remarks.
+ * Flow:  DR  →  OGP  →  Invoice
+ *
+ * Editable fields (records-only): date, GST flag, payment terms, remarks.
  *
  * Snapshot-at-create fields (immutable after save): contractNo, partyCode,
  * nameOfParty.
@@ -35,11 +37,11 @@ public class Invoice {
 
     private LocalDate dated;
 
-    /** Strict 1:1 with a Dyed Receive — unique constraint blocks a second invoice for the same DR. */
+    /** Strict 1:1 with an Outward Gate Pass — unique constraint blocks a second invoice for the same OGP. */
     @Column(unique = true)
-    private Long dyedReceiveId;
+    private Long outwardGatePassId;
 
-    /** Snapshot identity fields — set from the linked DR / Contract at create time. */
+    /** Snapshot identity fields — set from the linked OGP / Contract at create time. */
     private String contractNo;
     private String partyCode;
     private String nameOfParty;

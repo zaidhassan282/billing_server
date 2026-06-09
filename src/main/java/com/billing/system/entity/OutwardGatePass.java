@@ -24,6 +24,18 @@ public class OutwardGatePass {
     // Reference to source inward (optional)
     private String inwardId;
 
+    /**
+     * Foreign key to the Dyed Receive this OGP draws from. Required for
+     * every NEW gate pass — Outward is now the "deliver the dyed fabric
+     * to the customer" step that sits between DR and Invoice. Legacy
+     * pre-rewire rows may still have this null.
+     */
+    private Long dyedReceiveId;
+
+    /** Denormalised DR business id (e.g. "DR-ABC123") for display and joins. */
+    @Column(length = 32)
+    private String drId;
+
     private String contractNo;
     private String customerCode;
     private String customerName;

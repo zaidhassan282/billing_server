@@ -9,7 +9,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.util.List;
-import java.util.UUID;
 
 /**
  * Dyed Receive is its own per-Issue stock pool — the completed-work returns
@@ -66,7 +65,9 @@ public class DyedReceiveService {
         // Over-receive guard: total of all DRs for this Issue can't exceed the issued kg.
         assertWithinIssueCapacity(issue, null, receive.getQuantityKg());
 
-        receive.setNewId("DR-" + UUID.randomUUID().toString().substring(0, 6).toUpperCase());
+        // Sequence-based id (DR{yy}{seq}) so DRs read cleanly next to the
+        // IGP / OGP / ITD / INV families rather than as one-off UUIDs.
+        receive.setNewId(generateDrId());
         if (receive.getDated() == null) receive.setDated(LocalDate.now());
 
         // Shrinkage is a percentage of the received quantity (e.g. 5 = 5%).
@@ -144,6 +145,26 @@ public class DyedReceiveService {
 
     private static boolean isBlank(String s) {
         return s == null || s.isEmpty();
+    }
+
+    /**
+     * Next DR business id in DR{yy}{seq} format (e.g. {@code DR26001}).
+     * Old DR-XXXXXX UUID rows are ignored by the prefix filter and stay
+     * untouched.
+     */
+    private String generateDrId() {
+        String yy = String.valueOf(LocalDate.now().getYear()).substring(2);
+        String prefix = "DR" + yy;
+        int max = dyedRepo.findAll().stream()
+                .map(DyedReceive::getNewId)
+                .filter(s -> s != null && s.startsWith(prefix))
+                .map(s -> {
+                    try { return Integer.parseInt(s.substring(prefix.length())); }
+                    catch (Exception e) { return 0; }
+                })
+                .max(Integer::compareTo)
+                .orElse(0);
+        return prefix + String.format("%03d", max + 1);
     }
 
     /**

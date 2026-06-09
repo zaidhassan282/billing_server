@@ -5,6 +5,7 @@ import com.billing.system.repository.PermanentTableRepository;
 import com.billing.system.service.AuditService;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.util.List;
 
 @RestController
@@ -33,6 +34,14 @@ public class PermanentTableController {
         // Normalize blanks to null so the DB unique constraint allows multiple rows without an NTN
         if (data.getNtn() != null && data.getNtn().isBlank()) data.setNtn(null);
         if (data.getNameOfParty() != null && data.getNameOfParty().isBlank()) data.setNameOfParty(null);
+
+        // Auto-generate Party ID (P{yy}{seq}) when missing — covers imports
+        // and any client that forgets to send one. Matches the AddParty form's
+        // generator so the sequence stays continuous.
+        if (data.getId() == null
+                && (data.getPartyCode() == null || data.getPartyCode().isBlank())) {
+            data.setPartyCode(generatePartyCode());
+        }
 
         if (data.getNtn() != null) {
             repo.findByNtn(data.getNtn()).ifPresent(existing -> {
@@ -86,5 +95,21 @@ public class PermanentTableController {
         List<PermanentTable> byCode = repo.findByPartyCodeContainingIgnoreCase(query);
         byName.addAll(byCode);
         return byName;
+    }
+
+    /** Next Party id in P{yy}{seq} format (e.g. {@code P26001}). */
+    private String generatePartyCode() {
+        String yy = String.valueOf(LocalDate.now().getYear()).substring(2);
+        String prefix = "P" + yy;
+        int max = repo.findAll().stream()
+                .map(PermanentTable::getPartyCode)
+                .filter(s -> s != null && s.startsWith(prefix))
+                .map(s -> {
+                    try { return Integer.parseInt(s.substring(prefix.length())); }
+                    catch (Exception e) { return 0; }
+                })
+                .max(Integer::compareTo)
+                .orElse(0);
+        return prefix + String.format("%03d", max + 1);
     }
 }

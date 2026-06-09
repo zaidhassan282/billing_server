@@ -5,6 +5,7 @@ import com.billing.system.repository.ContractRepository;
 import com.billing.system.service.AuditService;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.util.List;
 
 /**
@@ -38,6 +39,14 @@ public class ContractsTableController {
                 ? audit.snapshot(contractRepo.findById(contract.getId()).orElse(null))
                 : null;
 
+        // Auto-generate Contract No (CNT{yy}{seq}) when missing — covers
+        // imports and any client that forgets to send one. Matches the
+        // AddContract form's generator.
+        if (!isUpdate
+                && (contract.getContractNo() == null || contract.getContractNo().isBlank())) {
+            contract.setContractNo(generateContractNo());
+        }
+
         Contract saved = contractRepo.save(contract);
         String id = String.valueOf(saved.getId());
         String biz = saved.getContractNo();
@@ -61,5 +70,21 @@ public class ContractsTableController {
             audit.logDelete(ENTITY, String.valueOf(id), existing.getContractNo(), before,
                     "Contract " + existing.getContractNo() + " deleted (table)");
         }
+    }
+
+    /** Next Contract id in CNT{yy}{seq} format (e.g. {@code CNT26001}). */
+    private String generateContractNo() {
+        String yy = String.valueOf(LocalDate.now().getYear()).substring(2);
+        String prefix = "CNT" + yy;
+        int max = contractRepo.findAll().stream()
+                .map(Contract::getContractNo)
+                .filter(s -> s != null && s.startsWith(prefix))
+                .map(s -> {
+                    try { return Integer.parseInt(s.substring(prefix.length())); }
+                    catch (Exception e) { return 0; }
+                })
+                .max(Integer::compareTo)
+                .orElse(0);
+        return prefix + String.format("%03d", max + 1);
     }
 }

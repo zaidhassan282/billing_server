@@ -1,10 +1,13 @@
 package com.billing.system.config;
 
+import com.billing.system.entity.Tenant;
+import com.billing.system.repository.TenantRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.annotation.Order;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 /**
@@ -28,6 +31,7 @@ public class SchemaCleanupRunner {
     private static final Logger log = LoggerFactory.getLogger(SchemaCleanupRunner.class);
 
     @Bean
+    @Order(1)
     ApplicationRunner schemaCleanups(JdbcTemplate jdbc) {
         return args -> {
             // BUG-2: drop the orphan dyed_receive_id column on invoice.
@@ -43,6 +47,39 @@ public class SchemaCleanupRunner {
             tryCleanup(jdbc,
                     "DELETE FROM invoice WHERE outward_gate_pass_id IS NULL",
                     "invoice rows with NULL outward_gate_pass_id");
+        };
+    }
+
+    /**
+     * Seed the single Tenant row on first boot — the values were the
+     * hardcoded JSX strings that lived in Dashboard / Invoice /
+     * OutwardGatePassDocument etc. before Phase 1 of the SaaS roadmap. An
+     * admin can edit any of them via the Settings page; this seeder only
+     * runs when the table is empty.
+     */
+    @Bean
+    @Order(2)
+    ApplicationRunner seedTenant(TenantRepository tenantRepo) {
+        return args -> {
+            if (tenantRepo.count() > 0) {
+                log.info("Tenant seed: already populated, skipping");
+                return;
+            }
+            Tenant t = new Tenant();
+            t.setName("Fine Fusion Textile");
+            t.setLogoUrl("");
+            t.setAddress("Plot A-15/B, Binoria Chowk, SITE, Karachi");
+            t.setPhone("0315-1113223");
+            t.setEmail("finefusiontextile@gmail.com");
+            t.setGstRate(0.18);
+            t.setCurrency("PKR");
+            t.setPaymentTermsDefault("");
+            t.setTermsAndConditions(
+                    "1. Goods once sold will not be returned without prior approval.\n"
+                    + "2. Payment due within agreed terms.");
+            t.setAuthorisedSignatoryName("");
+            tenantRepo.save(t);
+            log.info("Tenant seed: created '{}' as tenant id={}", t.getName(), t.getId());
         };
     }
 

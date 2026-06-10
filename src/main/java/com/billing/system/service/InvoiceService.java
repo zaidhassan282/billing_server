@@ -6,10 +6,12 @@ import com.billing.system.entity.DyedReceive;
 import com.billing.system.entity.Invoice;
 import com.billing.system.entity.OutwardGatePass;
 import com.billing.system.entity.OutwardItem;
+import com.billing.system.entity.Tenant;
 import com.billing.system.repository.ContractRepository;
 import com.billing.system.repository.DyedReceiveRepository;
 import com.billing.system.repository.InvoiceRepository;
 import com.billing.system.repository.OutwardGatePassRepository;
+import com.billing.system.repository.TenantRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,23 +27,27 @@ import java.util.stream.Collectors;
 @Service
 public class InvoiceService {
 
-    private static final double GST_RATE = 0.18;
+    /** Fallback if the tenant row has no GST rate set. */
+    private static final double GST_RATE_FALLBACK = 0.18;
 
     private final InvoiceRepository invoiceRepo;
     private final OutwardGatePassRepository outwardRepo;
     private final DyedReceiveRepository dyedRepo;
     private final ContractRepository contractRepo;
+    private final TenantRepository tenantRepo;
     private final AuditService audit;
 
     public InvoiceService(InvoiceRepository invoiceRepo,
                           OutwardGatePassRepository outwardRepo,
                           DyedReceiveRepository dyedRepo,
                           ContractRepository contractRepo,
+                          TenantRepository tenantRepo,
                           AuditService audit) {
         this.invoiceRepo = invoiceRepo;
         this.outwardRepo = outwardRepo;
         this.dyedRepo = dyedRepo;
         this.contractRepo = contractRepo;
+        this.tenantRepo = tenantRepo;
         this.audit = audit;
     }
 
@@ -185,7 +191,7 @@ public class InvoiceService {
         double amount = qtyKg * rate;
         v.setAmount(amount);
 
-        double gst = "Yes".equalsIgnoreCase(inv.getGstInvoiceYesNo()) ? amount * GST_RATE : 0.0;
+        double gst = "Yes".equalsIgnoreCase(inv.getGstInvoiceYesNo()) ? amount * currentGstRate() : 0.0;
         v.setGstAmount(gst);
         v.setTotalAmount(amount + gst);
         return v;
@@ -214,4 +220,16 @@ public class InvoiceService {
     }
 
     private static boolean isBlank(String s) { return s == null || s.isEmpty(); }
+
+    /**
+     * GST rate as a fraction (0.18 = 18%) read live from the Tenant row,
+     * so an admin change in /settings flows straight into every invoice
+     * read. Falls back to the historical 18% if the tenant row hasn't
+     * been seeded yet (only happens before SchemaCleanupRunner runs).
+     */
+    private double currentGstRate() {
+        Tenant t = tenantRepo.findById(1L).orElse(null);
+        if (t == null || t.getGstRate() == null) return GST_RATE_FALLBACK;
+        return t.getGstRate();
+    }
 }

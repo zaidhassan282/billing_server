@@ -14,6 +14,11 @@ public class InwardItem {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    /** Per-tenant scope (Phase 2). Denormalised from the parent gate
+     *  pass for cheap query filtering. */
+    @Column(name = "tenant_id")
+    private Long tenantId = 1L;
+
     // --- Existing item fields (still saved, can be filled or left blank) ---
     private String quality;
     private String color;

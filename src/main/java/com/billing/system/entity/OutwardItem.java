@@ -14,6 +14,11 @@ public class OutwardItem {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    /** Per-tenant scope (Phase 2). Denormalised from the parent gate
+     *  pass for cheap query filtering. */
+    @Column(name = "tenant_id")
+    private Long tenantId = 1L;
+
     private String quality;
     private String color;
     private String design;

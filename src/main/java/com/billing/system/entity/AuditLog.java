@@ -12,13 +12,19 @@ import java.time.LocalDateTime;
 @Table(name = "audit_log", indexes = {
         @Index(name = "idx_audit_entity_type", columnList = "entityType"),
         @Index(name = "idx_audit_entity_id", columnList = "entityType, entityId"),
-        @Index(name = "idx_audit_changed_at", columnList = "changedAt")
+        @Index(name = "idx_audit_changed_at", columnList = "changedAt"),
+        @Index(name = "idx_audit_tenant", columnList = "tenant_id, changedAt")
 })
 public class AuditLog {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    /** Per-tenant scope (Phase 2). Defaults to 1 so single-tenant deploys
+     *  keep working; P2-4 overrides via TenantContext from the JWT. */
+    @Column(name = "tenant_id")
+    private Long tenantId = 1L;
 
     /** Entity type, e.g. "InwardGatePass", "PermanentTable". */
     @Column(nullable = false, length = 64)

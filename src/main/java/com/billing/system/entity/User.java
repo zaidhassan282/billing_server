@@ -38,7 +38,7 @@ public class User {
     @Column(nullable = false, length = 80)
     private String passwordHash;
 
-    @Column(name = "tenant_id", nullable = false)
+    @Column(name = "tenant_id")
     private Long tenantId;
 
     /** Tenant admin = implicit all-yes on permissions. Phase 3 refines. */

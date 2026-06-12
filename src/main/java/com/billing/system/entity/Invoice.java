@@ -31,6 +31,11 @@ public class Invoice {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    /** Per-tenant scope (Phase 2). Defaults to 1 so single-tenant deploys
+     *  keep working; P2-4 overrides via TenantContext from the JWT. */
+    @Column(name = "tenant_id")
+    private Long tenantId = 1L;
+
     /** Business id, format INV26001. */
     @Column(unique = true, length = 32)
     private String invoiceNo;

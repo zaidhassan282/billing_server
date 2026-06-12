@@ -16,6 +16,11 @@ public class Contract {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    /** Per-tenant scope (Phase 2). Defaults to 1 so single-tenant deploys
+     *  keep working; P2-4 overrides via TenantContext from the JWT. */
+    @Column(name = "tenant_id")
+    private Long tenantId = 1L;
+
     private LocalDate dated;
 
     private String contractNo;

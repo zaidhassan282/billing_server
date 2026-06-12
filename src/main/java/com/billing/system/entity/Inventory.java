@@ -9,13 +9,18 @@ import lombok.Setter;
 @Entity
 @Table(name = "inventory", indexes = {
         @Index(name = "idx_inv_lookup",
-               columnList = "contractNo, quality, color, stage", unique = true)
+               columnList = "tenant_id, contractNo, quality, color, stage", unique = true)
 })
 public class Inventory {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    /** Per-tenant scope (Phase 2). Defaults to 1 so single-tenant deploys
+     *  keep working; P2-4 overrides via TenantContext from the JWT. */
+    @Column(name = "tenant_id")
+    private Long tenantId = 1L;
 
     /** Contract this stock belongs to. Stock is scoped per contract. */
     @Column(nullable = false, length = 64)

@@ -16,6 +16,11 @@ public class Entry {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    /** Per-tenant scope (Phase 2). Defaults to 1; P2-4 overrides via
+     *  TenantContext from the JWT. */
+    @Column(name = "tenant_id")
+    private Long tenantId = 1L;
+
     private Integer serialNo;
 
     private LocalDate dated;

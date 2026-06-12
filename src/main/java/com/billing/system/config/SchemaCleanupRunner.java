@@ -50,6 +50,34 @@ public class SchemaCleanupRunner {
             tryCleanup(jdbc,
                     "DELETE FROM invoice WHERE outward_gate_pass_id IS NULL",
                     "invoice rows with NULL outward_gate_pass_id");
+
+            // P2-3: every business table just gained a tenant_id column.
+            // Hibernate's ALTER added it as nullable; backfill any
+            // pre-existing rows to tenant_id = 1 (Fine Fusion). New rows
+            // get the Java default = 1L; P2-4's TenantContext will
+            // override this from the JWT once login lands.
+            for (String table : new String[] {
+                    "permanent_table",
+                    "permanent_party",
+                    "contract_table",
+                    "inward_gate_pass",
+                    "inward_item",
+                    "outward_gate_pass",
+                    "outward_item",
+                    "issue_to_dyeing",
+                    "dyed_receive",
+                    "invoice",
+                    "inventory",
+                    "audit_log",
+                    "fabric_order",
+                    "fabric_movement",
+                    "daily_entry",
+                    "app_user",
+            }) {
+                tryCleanup(jdbc,
+                        "UPDATE " + table + " SET tenant_id = 1 WHERE tenant_id IS NULL",
+                        table + ".tenant_id backfill");
+            }
         };
     }
 

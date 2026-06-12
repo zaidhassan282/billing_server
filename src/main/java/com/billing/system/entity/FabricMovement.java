@@ -13,6 +13,11 @@ public class FabricMovement {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    /** Per-tenant scope (Phase 2). Defaults to 1; P2-4 overrides via
+     *  TenantContext from the JWT. */
+    @Column(name = "tenant_id")
+    private Long tenantId = 1L;
+
     private String refId;
     private String quality;
     private Double quantityKg;
@@ -32,6 +37,14 @@ public class FabricMovement {
 
     public Long getId() {
         return id;
+    }
+
+    public Long getTenantId() {
+        return tenantId;
+    }
+
+    public void setTenantId(Long tenantId) {
+        this.tenantId = tenantId;
     }
 
     public String getRefId() {

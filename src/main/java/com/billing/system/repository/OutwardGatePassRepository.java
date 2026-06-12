@@ -12,4 +12,7 @@ public interface OutwardGatePassRepository extends JpaRepository<OutwardGatePass
 
     /** All OGPs that draw from the given Dyed Receive — used for the capacity check. */
     List<OutwardGatePass> findByDyedReceiveId(Long dyedReceiveId);
+
+    /** Single-row lookup for the next-id generator (replaces findAll().stream()). */
+    Optional<OutwardGatePass> findFirstByOutwardIdStartingWithOrderByOutwardIdDesc(String prefix);
 }

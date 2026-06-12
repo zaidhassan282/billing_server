@@ -245,14 +245,14 @@ public class OutwardGatePassService {
     private String generateOutwardId() {
         String yy = String.valueOf(LocalDate.now().getYear()).substring(2);
         String prefix = "OGP" + yy;
-        int max = outwardRepo.findAll().stream()
+        // PERF-3 + P2-5 — see InwardService.generateInwardId for the rationale.
+        int max = outwardRepo.findFirstByOutwardIdStartingWithOrderByOutwardIdDesc(prefix)
                 .map(OutwardGatePass::getOutwardId)
-                .filter(s -> s != null && s.startsWith(prefix))
                 .map(s -> {
                     try { return Integer.parseInt(s.substring(prefix.length())); }
                     catch (Exception e) { return 0; }
                 })
-                .max(Integer::compareTo).orElse(0);
+                .orElse(0);
         return prefix + String.format("%03d", max + 1);
     }
 

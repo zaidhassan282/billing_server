@@ -15,4 +15,7 @@ public interface PermanentTableRepository extends JpaRepository<PermanentTable, 
     List<PermanentTable> findByNameOfPartyContainingIgnoreCase(String name);
 
     List<PermanentTable> findByPartyCodeContainingIgnoreCase(String code);
+
+    /** Single-row lookup for the next-id generator (replaces findAll().stream()). */
+    Optional<PermanentTable> findFirstByPartyCodeStartingWithOrderByPartyCodeDesc(String prefix);
 }

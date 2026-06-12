@@ -159,14 +159,13 @@ public class IssueToDyeingService {
     private String generateIssueId() {
         String yy = String.valueOf(LocalDate.now().getYear()).substring(2);
         String prefix = "ITD" + yy;
-        int max = issueRepo.findAll().stream()
+        // PERF-3 + P2-5 — see InwardService.generateInwardId for the rationale.
+        int max = issueRepo.findFirstByIssueIdStartingWithOrderByIssueIdDesc(prefix)
                 .map(IssueToDyeing::getIssueId)
-                .filter(id -> id != null && id.startsWith(prefix))
                 .map(id -> {
                     try { return Integer.parseInt(id.substring(prefix.length())); }
                     catch (Exception e) { return 0; }
                 })
-                .max(Integer::compareTo)
                 .orElse(0);
         return prefix + String.format("%03d", max + 1);
     }

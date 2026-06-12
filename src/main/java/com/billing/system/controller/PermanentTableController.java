@@ -101,14 +101,14 @@ public class PermanentTableController {
     private String generatePartyCode() {
         String yy = String.valueOf(LocalDate.now().getYear()).substring(2);
         String prefix = "P" + yy;
-        int max = repo.findAll().stream()
+        // PERF-3 + P2-5 — single-row read instead of findAll() scan;
+        // Hibernate's @TenantId scopes to the current tenant.
+        int max = repo.findFirstByPartyCodeStartingWithOrderByPartyCodeDesc(prefix)
                 .map(PermanentTable::getPartyCode)
-                .filter(s -> s != null && s.startsWith(prefix))
                 .map(s -> {
                     try { return Integer.parseInt(s.substring(prefix.length())); }
                     catch (Exception e) { return 0; }
                 })
-                .max(Integer::compareTo)
                 .orElse(0);
         return prefix + String.format("%03d", max + 1);
     }

@@ -8,4 +8,7 @@ import java.util.Optional;
 public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
 
     Optional<Invoice> findByOutwardGatePassId(Long outwardGatePassId);
+
+    /** Single-row lookup for the next-id generator (replaces findAll().stream()). */
+    Optional<Invoice> findFirstByInvoiceNoStartingWithOrderByInvoiceNoDesc(String prefix);
 }

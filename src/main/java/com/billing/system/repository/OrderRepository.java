@@ -12,4 +12,7 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     Optional<Order> findByOrderId(String orderId);
     List<Order> findByStatus(OrderStatus status, Sort sort);
     List<Order> findByContractNo(String contractNo, Sort sort);
+
+    /** Single-row lookup for the next-id generator (replaces findAll().stream()). */
+    Optional<Order> findFirstByOrderIdStartingWithOrderByOrderIdDesc(String prefix);
 }

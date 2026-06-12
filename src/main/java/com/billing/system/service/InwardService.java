@@ -255,14 +255,15 @@ public class InwardService {
     private String generateInwardId() {
         String yy = String.valueOf(LocalDate.now().getYear()).substring(2);
         String prefix = "IGP" + yy;
-        int max = inwardRepo.findAll().stream()
+        // Single-row read replaces the previous findAll().stream() scan
+        // (PERF-3). Hibernate's @TenantId filters by current tenant so
+        // sequences are per-tenant for free (P2-5).
+        int max = inwardRepo.findFirstByInwardIdStartingWithOrderByInwardIdDesc(prefix)
                 .map(InwardGatePass::getInwardId)
-                .filter(s -> s != null && s.startsWith(prefix))
                 .map(s -> {
                     try { return Integer.parseInt(s.substring(prefix.length())); }
                     catch (Exception e) { return 0; }
                 })
-                .max(Integer::compareTo)
                 .orElse(0);
         return prefix + String.format("%03d", max + 1);
     }

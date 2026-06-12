@@ -111,14 +111,13 @@ public class OrderService {
     private String generateOrderId() {
         String yy = String.valueOf(LocalDateTime.now().getYear()).substring(2);
         String prefix = "ORD" + yy;
-        int max = repo.findAll().stream()
+        // PERF-3 + P2-5 — see InwardService.generateInwardId for the rationale.
+        int max = repo.findFirstByOrderIdStartingWithOrderByOrderIdDesc(prefix)
                 .map(Order::getOrderId)
-                .filter(o -> o != null && o.startsWith(prefix))
                 .map(o -> {
                     try { return Integer.parseInt(o.substring(prefix.length())); }
                     catch (Exception e) { return 0; }
                 })
-                .max(Integer::compareTo)
                 .orElse(0);
         return prefix + String.format("%03d", max + 1);
     }

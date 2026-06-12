@@ -200,14 +200,13 @@ public class InvoiceService {
     private String generateInvoiceNo() {
         String yy = String.valueOf(LocalDate.now().getYear()).substring(2);
         String prefix = "INV" + yy;
-        int max = invoiceRepo.findAll().stream()
+        // PERF-3 + P2-5 — see InwardService.generateInwardId for the rationale.
+        int max = invoiceRepo.findFirstByInvoiceNoStartingWithOrderByInvoiceNoDesc(prefix)
                 .map(Invoice::getInvoiceNo)
-                .filter(s -> s != null && s.startsWith(prefix))
                 .map(s -> {
                     try { return Integer.parseInt(s.substring(prefix.length())); }
                     catch (Exception e) { return 0; }
                 })
-                .max(Integer::compareTo)
                 .orElse(0);
         return prefix + String.format("%03d", max + 1);
     }

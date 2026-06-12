@@ -1,7 +1,9 @@
 package com.billing.system.config;
 
 import com.billing.system.entity.Tenant;
+import com.billing.system.entity.User;
 import com.billing.system.repository.TenantRepository;
+import com.billing.system.repository.UserRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationRunner;
@@ -9,6 +11,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
 /**
  * One-shot schema cleanups that run after Hibernate's {@code ddl-auto=update}
@@ -80,6 +83,42 @@ public class SchemaCleanupRunner {
             t.setAuthorisedSignatoryName("");
             tenantRepo.save(t);
             log.info("Tenant seed: created '{}' as tenant id={}", t.getName(), t.getId());
+        };
+    }
+
+    /**
+     * Seed the first admin user when the {@code app_user} table is
+     * empty. Email + password come from env vars so a real operator can
+     * pick them before the very first boot; defaults are dev-only.
+     *
+     * Prints the credentials to the log because there's no other way to
+     * find them on a fresh deployment. Change the password on first
+     * login (once that screen exists in P2-6).
+     */
+    @Bean
+    @Order(3)
+    ApplicationRunner seedAdminUser(UserRepository users,
+                                    PasswordEncoder encoder,
+                                    org.springframework.core.env.Environment env) {
+        return args -> {
+            if (users.count() > 0) {
+                log.info("Admin seed: at least one user exists, skipping");
+                return;
+            }
+            String email = env.getProperty("app.bootstrap.admin-email",
+                    "admin@finefusion.local");
+            String password = env.getProperty("app.bootstrap.admin-password",
+                    "admin1234");
+            User admin = new User();
+            admin.setEmail(email.toLowerCase());
+            admin.setPasswordHash(encoder.encode(password));
+            admin.setTenantId(1L);     // Fine Fusion is the seeded tenant
+            admin.setTenantAdmin(true);
+            admin.setDisplayName("Administrator");
+            admin.setEmailVerified(true);
+            users.save(admin);
+            log.warn("Admin seed: created '{}' / password '{}' — CHANGE THIS on first login",
+                    email, password);
         };
     }
 

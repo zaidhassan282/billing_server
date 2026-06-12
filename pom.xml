@@ -82,6 +82,26 @@
 			<artifactId>jackson-datatype-jsr310</artifactId>
 			<version>2.18.3</version>
 		</dependency>
+
+		<!-- JWT (Phase 2). jjwt is the most-used JWT lib for Java. The
+		     -impl and -jackson modules are runtime-only per the docs. -->
+		<dependency>
+			<groupId>io.jsonwebtoken</groupId>
+			<artifactId>jjwt-api</artifactId>
+			<version>0.12.6</version>
+		</dependency>
+		<dependency>
+			<groupId>io.jsonwebtoken</groupId>
+			<artifactId>jjwt-impl</artifactId>
+			<version>0.12.6</version>
+			<scope>runtime</scope>
+		</dependency>
+		<dependency>
+			<groupId>io.jsonwebtoken</groupId>
+			<artifactId>jjwt-jackson</artifactId>
+			<version>0.12.6</version>
+			<scope>runtime</scope>
+		</dependency>
 	</dependencies>
 
 	<build>

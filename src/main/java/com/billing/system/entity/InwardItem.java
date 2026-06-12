@@ -16,6 +16,7 @@ public class InwardItem {
 
     /** Per-tenant scope (Phase 2). Denormalised from the parent gate
      *  pass for cheap query filtering. */
+    @org.hibernate.annotations.TenantId
     @Column(name = "tenant_id")
     private Long tenantId = 1L;
 

@@ -15,6 +15,7 @@ public class FabricMovement {
 
     /** Per-tenant scope (Phase 2). Defaults to 1; P2-4 overrides via
      *  TenantContext from the JWT. */
+    @org.hibernate.annotations.TenantId
     @Column(name = "tenant_id")
     private Long tenantId = 1L;
 

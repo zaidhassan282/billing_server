@@ -15,14 +15,11 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 /**
- * Spring Security configuration — Phase 2 transitional state.
+ * Spring Security configuration — Phase 2 authenticated state.
  *
- * Phase 2 introduces JWT auth + per-tenant scoping *alongside* the
- * existing public endpoints so the running app keeps working while the
- * frontend hasn't grown its login page yet. Once Login/Signup ship in
- * the frontend (P2-6), the permitAll() blanket below flips to
- * authenticated() and the only public endpoints will be /auth/login +
- * /auth/signup.
+ * After P2-6, the SPA owns a login/signup flow and attaches the JWT to
+ * every request. The legacy permitAll() blanket is gone. Only the three
+ * public auth endpoints stay open.
  *
  * Filter chain order:
  *   JwtAuthFilter           — parses Bearer token, sets SecurityContext
@@ -31,10 +28,9 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
  *   UsernamePasswordAuthenticationFilter (default position)
  *   ...
  *
- * Current rules:
- *   /auth/login, /auth/signup  → permitAll
- *   /auth/me                   → authenticated (validates JWT pipeline)
- *   everything else            → permitAll (legacy compat, transitional)
+ * Rules:
+ *   /auth/login, /auth/signup, /auth/verify  → permitAll
+ *   everything else                          → authenticated
  */
 @Configuration
 public class SecurityConfig {
@@ -57,10 +53,14 @@ public class SecurityConfig {
                 .sessionManagement((SessionManagementConfigurer<HttpSecurity> sm) ->
                         sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/auth/login", "/auth/signup").permitAll()
-                        .requestMatchers("/auth/me").authenticated()
-                        // Transitional: P2-6 flips this to authenticated().
-                        .anyRequest().permitAll())
+                        // Open endpoints. /auth/logout is also open since it's
+                        // a stateless no-op stub — drop the JWT client-side.
+                        .requestMatchers("/auth/login", "/auth/signup",
+                                         "/auth/verify", "/auth/logout").permitAll()
+                        // Spring's CORS preflight requests fly without an
+                        // Authorization header.
+                        .requestMatchers(org.springframework.http.HttpMethod.OPTIONS, "/**").permitAll()
+                        .anyRequest().authenticated())
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
                 // TenantContextFilter must run AFTER JwtAuthFilter so the
                 // SecurityContext is already populated when it copies the

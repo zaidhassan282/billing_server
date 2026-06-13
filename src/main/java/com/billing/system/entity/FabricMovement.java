@@ -17,7 +17,7 @@ public class FabricMovement {
      *  TenantContext from the JWT. */
     @org.hibernate.annotations.TenantId
     @Column(name = "tenant_id")
-    private Long tenantId = 1L;
+    private Long tenantId;
 
     private String refId;
     private String quality;

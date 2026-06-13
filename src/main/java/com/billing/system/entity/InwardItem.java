@@ -18,7 +18,7 @@ public class InwardItem {
      *  pass for cheap query filtering. */
     @org.hibernate.annotations.TenantId
     @Column(name = "tenant_id")
-    private Long tenantId = 1L;
+    private Long tenantId;
 
     // --- Existing item fields (still saved, can be filled or left blank) ---
     private String quality;

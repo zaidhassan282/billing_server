@@ -22,7 +22,7 @@ public class PermanentTable {
      *  keep working; P2-4 overrides via TenantContext from the JWT. */
     @org.hibernate.annotations.TenantId
     @Column(name = "tenant_id")
-    private Long tenantId = 1L;
+    private Long tenantId;
 
     private String partyCode;
 

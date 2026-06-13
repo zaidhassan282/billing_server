@@ -20,7 +20,7 @@ public class Entry {
      *  TenantContext from the JWT. */
     @org.hibernate.annotations.TenantId
     @Column(name = "tenant_id")
-    private Long tenantId = 1L;
+    private Long tenantId;
 
     private Integer serialNo;
 

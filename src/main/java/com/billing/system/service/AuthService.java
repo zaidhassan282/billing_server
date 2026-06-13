@@ -129,8 +129,18 @@ public class AuthService {
             // the log line for a real SMTP send.
             issueAndLogVerifyLink(savedUser);
 
-            audit.logCreate("User", String.valueOf(savedUser.getId()), savedUser.getEmail(),
-                    savedUser, "Signup — tenant " + savedTenant.getName() + " created");
+            // Audit is best-effort during signup: if the audit insert
+            // blows up (constraint, @TenantId mismatch, anything), we'd
+            // rather lose the audit row than fail account creation that
+            // already succeeded. The catch surfaces the FULL cause so we
+            // can chase the underlying bug separately without breaking
+            // the user-facing flow.
+            try {
+                audit.logCreate("User", String.valueOf(savedUser.getId()), savedUser.getEmail(),
+                        savedUser, "Signup — tenant " + savedTenant.getName() + " created");
+            } catch (Exception auditErr) {
+                log.warn("Signup audit logCreate failed (continuing): {}", auditErr.toString(), auditErr);
+            }
         } catch (RuntimeException e) {
             log.error("Signup failed for {} / company={}: {}",
                     email, req.companyName(), e.toString(), e);

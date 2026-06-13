@@ -64,41 +64,40 @@ public class AuditService {
      * caller's transaction clean: a failed audit row triggers only the
      * inner rollback, the catch logs a warning, the caller commits.
      */
+    /**
+     * Why {@code REQUIRES_NEW} on every log* method: see the package
+     * note. tl;dr — if {@code repo.save(row)} below blows up,
+     * we don't want it to poison the CALLER's transaction.
+     *
+     * Why we DON'T try/catch inside this method: catching here doesn't
+     * unmark the rollback-only flag on the inner transaction, so the
+     * @Transactional AOP wrapper still throws UnexpectedRollbackException
+     * on commit. Callers that want best-effort behaviour wrap their
+     * call site in their own try/catch.
+     */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void logCreate(String entityType, String entityId, String businessId,
                           Object state, String summary) {
-        try {
-            AuditLog row = base(entityType, entityId, businessId, "CREATE", summary);
-            row.setSnapshot(toJson(state));
-            repo.save(row);
-        } catch (Exception e) {
-            log.warn("AuditService.logCreate failed for {} {}: {}", entityType, entityId, e.getMessage());
-        }
+        AuditLog row = base(entityType, entityId, businessId, "CREATE", summary);
+        row.setSnapshot(toJson(state));
+        repo.save(row);
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void logUpdate(String entityType, String entityId, String businessId,
                           Object before, Object after, String summary) {
-        try {
-            AuditLog row = base(entityType, entityId, businessId, "UPDATE", summary);
-            row.setSnapshot(toJson(after));
-            row.setChanges(toJson(diff(before, after)));
-            repo.save(row);
-        } catch (Exception e) {
-            log.warn("AuditService.logUpdate failed for {} {}: {}", entityType, entityId, e.getMessage());
-        }
+        AuditLog row = base(entityType, entityId, businessId, "UPDATE", summary);
+        row.setSnapshot(toJson(after));
+        row.setChanges(toJson(diff(before, after)));
+        repo.save(row);
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void logDelete(String entityType, String entityId, String businessId,
                           Object state, String summary) {
-        try {
-            AuditLog row = base(entityType, entityId, businessId, "DELETE", summary);
-            row.setSnapshot(toJson(state));
-            repo.save(row);
-        } catch (Exception e) {
-            log.warn("AuditService.logDelete failed for {} {}: {}", entityType, entityId, e.getMessage());
-        }
+        AuditLog row = base(entityType, entityId, businessId, "DELETE", summary);
+        row.setSnapshot(toJson(state));
+        repo.save(row);
     }
 
     private AuditLog base(String entityType, String entityId, String businessId,

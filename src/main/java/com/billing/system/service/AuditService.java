@@ -7,6 +7,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -47,6 +49,22 @@ public class AuditService {
         }
     }
 
+    /**
+     * Why {@code REQUIRES_NEW} on every log* method:
+     *
+     * The caller (e.g. {@code AuthService.signup}) is itself
+     * {@code @Transactional}. If {@code repo.save(row)} below blows up
+     * (constraint violation, @TenantId mismatch, …), JPA marks the
+     * CALLER's transaction as rollback-only — and the try/catch here
+     * doesn't undo that. The caller then tries to commit and Spring
+     * throws "Transaction silently rolled back because it has been
+     * marked as rollback-only".
+     *
+     * Running each audit write in its own nested transaction keeps the
+     * caller's transaction clean: a failed audit row triggers only the
+     * inner rollback, the catch logs a warning, the caller commits.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void logCreate(String entityType, String entityId, String businessId,
                           Object state, String summary) {
         try {
@@ -58,6 +76,7 @@ public class AuditService {
         }
     }
 
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void logUpdate(String entityType, String entityId, String businessId,
                           Object before, Object after, String summary) {
         try {
@@ -70,6 +89,7 @@ public class AuditService {
         }
     }
 
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void logDelete(String entityType, String entityId, String businessId,
                           Object state, String summary) {
         try {

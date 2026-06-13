@@ -2,16 +2,21 @@ package com.billing.system.controller;
 
 import com.billing.system.entity.Tenant;
 import com.billing.system.repository.TenantRepository;
+import com.billing.system.security.TenantContext;
 import com.billing.system.service.AuditService;
 import org.springframework.web.bind.annotation.*;
 
 /**
- * Per-tenant branding + business-defaults endpoint. Returns the single
- * tenant row that the seeder created on first boot. PUT is records-only
- * (no side effects on Invoice / Contract / etc. — they read live).
+ * Per-tenant branding + business-defaults endpoint.
  *
- * Phase 2 of the SaaS roadmap turns this into per-account scoping; for
- * now /tenant/current always means tenant id = 1.
+ * After Phase 2, every authenticated request carries the user's tenant
+ * id in the JWT, and TenantContextFilter pushes it into
+ * {@link TenantContext}. {@code /tenant/current} resolves which tenant
+ * to read against from there.
+ *
+ * Pre-authenticated requests (legacy / transitional / boot-time admin)
+ * fall back to the default tenant (1 — seeded Fine Fusion) so existing
+ * deployments keep working.
  */
 @RestController
 @CrossOrigin
@@ -30,16 +35,18 @@ public class TenantController {
 
     @GetMapping("/current")
     public Tenant getCurrent() {
-        return tenantRepo.findById(1L)
+        Long id = TenantContext.getOrDefault();
+        return tenantRepo.findById(id)
                 .orElseThrow(() -> new RuntimeException(
-                        "Tenant not seeded — restart the backend so the boot-time "
-                        + "seeder creates the default row."));
+                        "Tenant " + id + " not found — restart the backend so the "
+                        + "boot-time seeder creates the default row."));
     }
 
     @PutMapping("/current")
     public Tenant updateCurrent(@RequestBody Tenant patch) {
-        Tenant existing = tenantRepo.findById(1L)
-                .orElseThrow(() -> new RuntimeException("Tenant not seeded"));
+        Long id = TenantContext.getOrDefault();
+        Tenant existing = tenantRepo.findById(id)
+                .orElseThrow(() -> new RuntimeException("Tenant " + id + " not found"));
         Object before = audit.snapshot(existing);
 
         // Records-only: every settable field gets overwritten. Null on a

@@ -29,4 +29,7 @@ public class AuthDtos {
                              String email,
                              Long tenantId,
                              boolean admin) { }
+
+    /** GET /auth/verify?token=... result. */
+    public record VerifyResponse(String email, boolean verified, String message) { }
 }

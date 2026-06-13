@@ -4,8 +4,10 @@ import com.billing.system.dto.AuthDtos.AuthResponse;
 import com.billing.system.dto.AuthDtos.LoginRequest;
 import com.billing.system.dto.AuthDtos.MeResponse;
 import com.billing.system.dto.AuthDtos.SignupRequest;
+import com.billing.system.dto.AuthDtos.VerifyResponse;
 import com.billing.system.security.AuthPrincipal;
 import com.billing.system.service.AuthService;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
@@ -47,5 +49,27 @@ public class AuthController {
             throw new RuntimeException("Not authenticated");
         }
         return new MeResponse(p.userId(), p.email(), p.tenantId(), p.admin());
+    }
+
+    /**
+     * Email-verification landing. Phase 2 stub: link is logged on
+     * signup, user clicks it, server marks the account verified. P4-1
+     * swaps the log line for a real SMTP send. Idempotent on a token
+     * that's already been used.
+     */
+    @GetMapping("/verify")
+    public VerifyResponse verify(@RequestParam(value = "token", required = false) String token) {
+        return auth.verify(token);
+    }
+
+    /**
+     * Stateless logout — there's no server session to invalidate;
+     * the frontend just drops its stored JWT. This endpoint is here so
+     * the SPA can hit it on logout for audit logging once user-level
+     * auditing lands. For now it's a no-op 204.
+     */
+    @PostMapping("/logout")
+    public ResponseEntity<Void> logout() {
+        return ResponseEntity.noContent().build();
     }
 }

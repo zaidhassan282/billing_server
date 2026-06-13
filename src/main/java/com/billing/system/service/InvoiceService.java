@@ -16,7 +16,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -132,14 +137,104 @@ public class InvoiceService {
                 "Invoice " + existing.getInvoiceNo() + " deleted");
     }
 
+    /**
+     * PERF-2 — list view used to fire 3 extra queries per row
+     * (findById on OGP, on DR, findByContractNo on Contract). For 5000
+     * invoices that was 15k DB calls. Now: bulk-fetch OGPs, DRs and
+     * Contracts in one query each, then build views in memory.
+     * Worst case 4 round-trips regardless of list size.
+     */
     public List<InvoiceView> getAll() {
-        return invoiceRepo.findAll().stream().map(this::toView).collect(Collectors.toList());
+        List<Invoice> invoices = invoiceRepo.findAll();
+        if (invoices.isEmpty()) return List.of();
+
+        Set<Long> ogpIds = invoices.stream()
+                .map(Invoice::getOutwardGatePassId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toCollection(HashSet::new));
+        Map<Long, OutwardGatePass> ogps = ogpIds.isEmpty()
+                ? Map.of()
+                : outwardRepo.findAllWithItemsByIdIn(ogpIds).stream()
+                        .collect(Collectors.toMap(OutwardGatePass::getId, o -> o));
+
+        Set<Long> drIds = ogps.values().stream()
+                .map(OutwardGatePass::getDyedReceiveId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toCollection(HashSet::new));
+        Map<Long, DyedReceive> drs = drIds.isEmpty()
+                ? Map.of()
+                : dyedRepo.findAllById(drIds).stream()
+                        .collect(Collectors.toMap(DyedReceive::getId, d -> d));
+
+        Set<String> contractNos = invoices.stream()
+                .map(Invoice::getContractNo)
+                .filter(s -> s != null && !s.isEmpty())
+                .collect(Collectors.toCollection(HashSet::new));
+        Map<String, Contract> contracts = contractNos.isEmpty()
+                ? Map.of()
+                : contractRepo.findByContractNoIn(contractNos).stream()
+                        .collect(Collectors.toMap(Contract::getContractNo, c -> c));
+
+        double gstRate = currentGstRate();
+        return invoices.stream()
+                .map(inv -> buildView(inv, ogps, drs, contracts, gstRate))
+                .collect(Collectors.toList());
     }
 
     public InvoiceView getById(Long id) {
         Invoice inv = invoiceRepo.findById(id)
                 .orElseThrow(() -> new RuntimeException("Invoice not found: " + id));
         return toView(inv);
+    }
+
+    /**
+     * Bulk variant — same shape as {@link #toView(Invoice)} but reads
+     * from pre-fetched maps instead of hitting the DB per row.
+     */
+    private InvoiceView buildView(Invoice inv,
+                                  Map<Long, OutwardGatePass> ogps,
+                                  Map<Long, DyedReceive> drs,
+                                  Map<String, Contract> contracts,
+                                  double gstRate) {
+        InvoiceView v = new InvoiceView();
+        v.setId(inv.getId());
+        v.setInvoiceNo(inv.getInvoiceNo());
+        v.setDated(inv.getDated());
+        v.setOutwardGatePassId(inv.getOutwardGatePassId());
+        v.setContractNo(inv.getContractNo());
+        v.setPartyCode(inv.getPartyCode());
+        v.setNameOfParty(inv.getNameOfParty());
+        v.setGstInvoiceYesNo(inv.getGstInvoiceYesNo());
+        v.setPaymentTerms(inv.getPaymentTerms());
+        v.setRemarks(inv.getRemarks());
+
+        OutwardGatePass ogp = inv.getOutwardGatePassId() != null
+                ? ogps.get(inv.getOutwardGatePassId()) : null;
+        if (ogp != null) {
+            v.setOutwardId(ogp.getOutwardId());
+            v.setQtyKg(sumItemKg(ogp.getItems()));
+            if (ogp.getDyedReceiveId() != null) {
+                v.setDyedReceiveId(ogp.getDyedReceiveId());
+                DyedReceive dr = drs.get(ogp.getDyedReceiveId());
+                if (dr != null) {
+                    v.setDrId(dr.getNewId());
+                    v.setIssueId(dr.getIssueId());
+                    v.setQuality(dr.getQuality());
+                    v.setColor(dr.getColor());
+                }
+            }
+        }
+
+        Contract c = inv.getContractNo() == null ? null : contracts.get(inv.getContractNo());
+        double rate = (c != null && c.getRateA() != null) ? c.getRateA() : 0.0;
+        v.setRate(rate);
+        double qtyKg = v.getQtyKg() == null ? 0.0 : v.getQtyKg();
+        double amount = qtyKg * rate;
+        v.setAmount(amount);
+        double gst = "Yes".equalsIgnoreCase(inv.getGstInvoiceYesNo()) ? amount * gstRate : 0.0;
+        v.setGstAmount(gst);
+        v.setTotalAmount(amount + gst);
+        return v;
     }
 
     /**

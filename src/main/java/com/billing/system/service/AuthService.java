@@ -3,14 +3,23 @@ package com.billing.system.service;
 import com.billing.system.dto.AuthDtos.AuthResponse;
 import com.billing.system.dto.AuthDtos.LoginRequest;
 import com.billing.system.dto.AuthDtos.SignupRequest;
+import com.billing.system.dto.AuthDtos.VerifyResponse;
 import com.billing.system.entity.Tenant;
 import com.billing.system.entity.User;
+import com.billing.system.entity.VerifyToken;
 import com.billing.system.repository.TenantRepository;
 import com.billing.system.repository.UserRepository;
+import com.billing.system.repository.VerifyTokenRepository;
 import com.billing.system.security.JwtService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDateTime;
+import java.util.UUID;
 
 /**
  * Login + signup business logic. Both paths end with a JWT issued by
@@ -23,22 +32,30 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class AuthService {
 
+    private static final Logger log = LoggerFactory.getLogger(AuthService.class);
+
     private final UserRepository users;
     private final TenantRepository tenants;
+    private final VerifyTokenRepository verifyTokens;
     private final PasswordEncoder encoder;
     private final JwtService jwt;
     private final AuditService audit;
+    private final String appBaseUrl;
 
     public AuthService(UserRepository users,
                        TenantRepository tenants,
+                       VerifyTokenRepository verifyTokens,
                        PasswordEncoder encoder,
                        JwtService jwt,
-                       AuditService audit) {
+                       AuditService audit,
+                       @Value("${app.base-url:http://localhost:8080}") String appBaseUrl) {
         this.users = users;
         this.tenants = tenants;
+        this.verifyTokens = verifyTokens;
         this.encoder = encoder;
         this.jwt = jwt;
         this.audit = audit;
+        this.appBaseUrl = appBaseUrl;
     }
 
     public AuthResponse login(LoginRequest req) {
@@ -91,10 +108,57 @@ public class AuthService {
         user.setEmailVerified(true);
         User savedUser = users.save(user);
 
+        // P2-7 stub: issue a verify token + log the link. P4-1 swaps the
+        // log line for a real SMTP send.
+        issueAndLogVerifyLink(savedUser);
+
         audit.logCreate("User", String.valueOf(savedUser.getId()), savedUser.getEmail(),
                 savedUser, "Signup — tenant " + savedTenant.getName() + " created");
 
         return respond(savedUser);
+    }
+
+    /**
+     * Verify (idempotent): looks up the token, marks it used, marks the
+     * user as verified. Returns a small descriptive payload.
+     */
+    @Transactional
+    public VerifyResponse verify(String tokenStr) {
+        if (tokenStr == null || tokenStr.isBlank()) {
+            return new VerifyResponse(null, false, "Missing token");
+        }
+        VerifyToken token = verifyTokens.findByToken(tokenStr).orElse(null);
+        if (token == null) {
+            return new VerifyResponse(null, false, "Token not found");
+        }
+        if (token.isUsed()) {
+            User u = users.findById(token.getUserId()).orElse(null);
+            return new VerifyResponse(u == null ? null : u.getEmail(), true,
+                    "Already verified");
+        }
+        if (token.getExpiresAt().isBefore(LocalDateTime.now())) {
+            return new VerifyResponse(null, false, "Token expired");
+        }
+        token.setUsed(true);
+        verifyTokens.save(token);
+        User user = users.findById(token.getUserId()).orElse(null);
+        if (user != null && !user.isEmailVerified()) {
+            user.setEmailVerified(true);
+            users.save(user);
+        }
+        return new VerifyResponse(user == null ? null : user.getEmail(), true,
+                "Email verified");
+    }
+
+    private void issueAndLogVerifyLink(User user) {
+        VerifyToken vt = new VerifyToken();
+        vt.setToken(UUID.randomUUID().toString().replace("-", ""));
+        vt.setUserId(user.getId());
+        vt.setExpiresAt(LocalDateTime.now().plusHours(24));
+        verifyTokens.save(vt);
+        String link = appBaseUrl + "/auth/verify?token=" + vt.getToken();
+        log.warn("==== Email verify link for {} ====\n  {}\n=================================",
+                user.getEmail(), link);
     }
 
     private AuthResponse respond(User user) {

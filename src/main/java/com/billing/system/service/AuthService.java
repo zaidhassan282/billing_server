@@ -11,6 +11,7 @@ import com.billing.system.repository.TenantRepository;
 import com.billing.system.repository.UserRepository;
 import com.billing.system.repository.VerifyTokenRepository;
 import com.billing.system.security.JwtService;
+import com.billing.system.security.TenantContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -95,25 +96,49 @@ public class AuthService {
         tenant.setTermsAndConditions(
                 "1. Goods once sold will not be returned without prior approval.\n"
                 + "2. Payment due within agreed terms.");
-        Tenant savedTenant = tenants.save(tenant);
 
-        User user = new User();
-        user.setEmail(email);
-        user.setPasswordHash(encoder.encode(req.password()));
-        user.setTenantId(savedTenant.getId());
-        user.setTenantAdmin(true);
-        user.setDisplayName(req.displayName() == null ? email : req.displayName());
-        // Phase 4 will require email verification before activation; for
-        // now we mark new accounts verified so the dev flow is unblocked.
-        user.setEmailVerified(true);
-        User savedUser = users.save(user);
+        Tenant savedTenant;
+        User savedUser;
 
-        // P2-7 stub: issue a verify token + log the link. P4-1 swaps the
-        // log line for a real SMTP send.
-        issueAndLogVerifyLink(savedUser);
+        // Switch TenantContext to the freshly created tenant for the rest
+        // of the signup. Without this, the @TenantId resolver returns the
+        // anonymous-request default (1L), and any subsequent insert into
+        // a @TenantId-scoped table (AuditLog, …) gets stamped with the
+        // wrong tenant id — Hibernate then refuses the save and the
+        // outer transaction silently rolls back.
+        Long prevTenant = TenantContext.get();
+        try {
+            savedTenant = tenants.save(tenant);
+            log.info("Signup: created tenant id={} '{}'", savedTenant.getId(), savedTenant.getName());
+            TenantContext.set(savedTenant.getId());
 
-        audit.logCreate("User", String.valueOf(savedUser.getId()), savedUser.getEmail(),
-                savedUser, "Signup — tenant " + savedTenant.getName() + " created");
+            User user = new User();
+            user.setEmail(email);
+            user.setPasswordHash(encoder.encode(req.password()));
+            user.setTenantId(savedTenant.getId());
+            user.setTenantAdmin(true);
+            user.setDisplayName(req.displayName() == null ? email : req.displayName());
+            // Phase 4 will require email verification before activation;
+            // for now we mark new accounts verified so the dev flow is
+            // unblocked.
+            user.setEmailVerified(true);
+            savedUser = users.save(user);
+            log.info("Signup: created user id={} email={}", savedUser.getId(), savedUser.getEmail());
+
+            // P2-7 stub: issue a verify token + log the link. P4-1 swaps
+            // the log line for a real SMTP send.
+            issueAndLogVerifyLink(savedUser);
+
+            audit.logCreate("User", String.valueOf(savedUser.getId()), savedUser.getEmail(),
+                    savedUser, "Signup — tenant " + savedTenant.getName() + " created");
+        } catch (RuntimeException e) {
+            log.error("Signup failed for {} / company={}: {}",
+                    email, req.companyName(), e.toString(), e);
+            throw e;
+        } finally {
+            if (prevTenant == null) TenantContext.clear();
+            else TenantContext.set(prevTenant);
+        }
 
         return respond(savedUser);
     }
